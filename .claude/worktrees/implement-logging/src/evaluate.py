@@ -21,7 +21,9 @@ import torch
 
 from dataset import TestDataset, ValDataset, build_transforms
 from model import build_model
-from utils import encode_rle, get_device
+from utils import encode_rle, get_device, get_logger, setup_logging
+
+logger = get_logger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,7 +45,9 @@ def predict_one(model, image, orig_size, device):
 
 def main() -> None:
     args = parse_args()
+    setup_logging()
     device = get_device()
+    logger.info("Loading checkpoint %s onto %s", args.checkpoint, device)
 
     model = build_model().to(device)
     state = torch.load(args.checkpoint, map_location=device)  # our own training output only
@@ -58,6 +62,7 @@ def main() -> None:
     else:
         dataset = TestDataset(args.data_root, eval_tf)
 
+    logger.info("Running inference on %d %s image(s)", len(dataset), args.split)
     rows: list[dict] = []
     for sample in dataset:  # TODO: batch with a DataLoader
         if args.split == "val":
@@ -75,7 +80,7 @@ def main() -> None:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(args.output, index=False)
-    print(f"Wrote {args.output} ({len(rows)} rows)")
+    logger.info("Wrote %s (%d rows)", args.output, len(rows))
 
 
 if __name__ == "__main__":

@@ -18,7 +18,9 @@ import torch
 
 from dataset import TrainLabeledDataset, TrainSegDataset, ValDataset
 from model import build_model
-from utils import get_device, seed_everything
+from utils import get_device, get_logger, seed_everything, setup_logging
+
+logger = get_logger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,9 +49,14 @@ def validate(model, val_loader, device) -> dict[str, float]:
 
 def main() -> None:
     args = parse_args()
+    setup_logging(log_file=args.out / "train.log")
     seed_everything(args.seed)
     device = get_device()
-    print(f"Using device: {device}")
+    logger.info(
+        "Config: epochs=%d batch_size=%d lr=%g seed=%d data_root=%s out=%s",
+        args.epochs, args.batch_size, args.lr, args.seed, args.data_root, args.out,
+    )
+    logger.info("Using device: %s", device)
 
     model = build_model().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
@@ -60,6 +67,7 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     best = -1.0
     for epoch in range(args.epochs):
+        logger.info("Epoch %d/%d", epoch + 1, args.epochs)
         # train_one_epoch(...); metrics = validate(...)
         # if metrics["score"] > best: torch.save(model.state_dict(), args.out / "best.pt")
         raise NotImplementedError

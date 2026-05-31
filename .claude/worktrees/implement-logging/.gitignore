@@ -1,9 +1,3 @@
-__pycache__/
-*.toml
-
-.claude/
-
-build/
 cache/
 checkpoints/
 data/

@@ -1,8 +1,13 @@
+# Install CUDA-enabled PyTorch wheels from the official PyTorch index.
+# This guarantees the GPU build of torch/torchvision rather than the CPU-only
+# default that pip may otherwise resolve.
+--extra-index-url https://download.pytorch.org/whl/cu132
+
 jupyterlab
 matplotlib
 numpy
 pandas
 pillow
 tensorflow
-torch
+torch>=2.12
 torchvision
