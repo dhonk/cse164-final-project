@@ -1,3 +1,6 @@
-.git
-/venv/
-/data/
+cache/
+checkpoints/
+data/
+logs/
+outputs/
+venv/
