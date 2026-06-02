@@ -5,7 +5,7 @@
     - I wonder if semantic segmenter would also be possible with entropy-based regularization?
 - I FINALLY GET HOW ENCODERS/DECODERS WORK RAHHHH
     - ITS ALL TENSORS
-    ![alt text](alwaystensors.jpg)
+    ![alt text](src/alwaystensors.jpg)
     - ALL THE WAY DOWN
     - U-NET MAKES SO MUCH SENSE
     - RAHHHHHHH

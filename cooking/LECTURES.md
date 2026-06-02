@@ -57,12 +57,12 @@ First step is that the last fully connected layers should be removed. This is do
 
 So, the reconstructed/segmentation pipeline becomes the following:
 1. **Start with the input tensor:** for RGB images, this means a **W x H x 3** tensor. 3 channels for R, G, B, and W x H for the arbitrary image size.\
-<img src="img1.png" alt="Encoder/Subsampling" width="300">
+<img src="src/img1.png" alt="Encoder/Subsampling" width="300">
 2. **Encoder/Subsampling:** Pass through successive convolutional and pooling layers. Just like any CNN, until getting to a final feature map.\
-<img src="img2.png" alt="Encoder/Subsampling" width="300">  
+<img src="src/img2.png" alt="Encoder/Subsampling" width="300">  
 In this case, subsampling takes the 2D feature map into a quarter of the original size *(w/4 x h/4)*, and has a feature depth of c channels. Because the fully connected layers were removed, spatial information gets preserved. Each "cell" in the grid contains a c-dimensional vector with the rich semantic features extracted from the respective field in the og image.
 3. **Deep Feature Map:** at this part passes N 1 x 1 convolution over the entire purple tensor, where N is the number of classes. This maps features to classes.\
-<img src="img4.png" alt="Convolve with num_classes 1 x 1 filters" width="300"> 
+<img src="src/img4.png" alt="Convolve with num_classes 1 x 1 filters" width="300"> 
 The tensor at the end of the encoding stage *(purple one)* had a feature depth of c arbitrary channels. The 1x1 convolution over the entire tensor turns into the first decoding tensor *(the red one)*, which has a feature depth equal to the number of classes. This lets us map the individual features into classes.
 
 Then: scores are gotten for the subsampled image, making the red block a coarse segmentation map. Then, the resulting tensor is upscaled back to the original size, giving the true dense pixel-by-pixel segmentation mask.
@@ -247,7 +247,7 @@ The mechanism of how self-attention works is through **queries** and **keys**.
 
 How self attention operates is fundamentally based on **vector multiplications.**
 <div style="display: flex; align-items: center;">
-    <img src="self-attention-query-key.svg" alt="Query Key calculation for $\alpha$" width="250"> 
+    <img src="src/self-attention-query-key.svg" alt="Query Key calculation for $\alpha$" width="250"> 
 </div>
 
 Ok, what's happening here? Let's break it down:
