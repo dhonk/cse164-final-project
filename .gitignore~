@@ -20,6 +20,3 @@ outputs/
 # too big
 data/
 venv/
-
-# lolz
-ConvNeXt-V2/
