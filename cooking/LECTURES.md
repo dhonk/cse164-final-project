@@ -56,12 +56,12 @@ First step is that the last fully connected layers should be removed. This is do
 2. **Removing Fixed Input Constraints:** Fully connected networks require a strictly defined number of input nodes. This is why classification CNNs need resizing before inference. Convolution & pooling layers just move filters across input, do not care about absolute size of image. Removing fully connected layers -> the model turns into a **Fully Convolutional Network (FCN).** This can take arbitrary dimension images, output corresponding feature map.
 
 So, the reconstructed/segmentation pipeline becomes the following:
-1. **Start with the input tensor:** for RGB images, this means a **W x H x 3** tensor. 3 channels for R, G, B, and W x H for the arbitrary image size.\
+1. **Start with the input tensor:** for RGB images, this means a **W x H x 3** tensor. 3 channels for R, G, B, and W x H for the arbitrary image size. \
 <img src="src/img1.png" alt="Encoder/Subsampling" width="300">
-2. **Encoder/Subsampling:** Pass through successive convolutional and pooling layers. Just like any CNN, until getting to a final feature map.\
+2. **Encoder/Subsampling:** Pass through successive convolutional and pooling layers. Just like any CNN, until getting to a final feature map. \
 <img src="src/img2.png" alt="Encoder/Subsampling" width="300">  
 In this case, subsampling takes the 2D feature map into a quarter of the original size *(w/4 x h/4)*, and has a feature depth of c channels. Because the fully connected layers were removed, spatial information gets preserved. Each "cell" in the grid contains a c-dimensional vector with the rich semantic features extracted from the respective field in the og image.
-3. **Deep Feature Map:** at this part passes N 1 x 1 convolution over the entire purple tensor, where N is the number of classes. This maps features to classes.\
+3. **Deep Feature Map:** at this part passes N 1 x 1 convolution over the entire purple tensor, where N is the number of classes. This maps features to classes. \
 <img src="src/img4.png" alt="Convolve with num_classes 1 x 1 filters" width="300"> 
 The tensor at the end of the encoding stage *(purple one)* had a feature depth of c arbitrary channels. The 1x1 convolution over the entire tensor turns into the first decoding tensor *(the red one)*, which has a feature depth equal to the number of classes. This lets us map the individual features into classes.
 

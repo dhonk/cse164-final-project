@@ -39,7 +39,7 @@ from torchvision import tv_tensors
 from torchvision.transforms import v2
 
 
-from utils import rgb_to_seg_id
+from .utils import rgb_to_seg_id
 
 # --- Transform constants -----------------------------------------------------
 # Plain arithmetic normalization (scale to [0,1] -> map to [-1,1]). NOT external

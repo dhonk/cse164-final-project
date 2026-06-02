@@ -38,23 +38,143 @@ Risk is of overfit/inability to gneralize with such few samples, but later this 
 
 ## Model Architecture Ideas
 ### ConvNeXt Backbone
+ConvNeXt V2 will be the backbone of choice, currently SOTA, and also CNNs generally do better with data starvation than ViT. Swin at this size and with this few samples will be very hard.
 
 ### UPerNet Decoder for Semantic Segmentation
-
-
-## High Level Project Architecture Ideas
-### 
+UPerNet was the decoder architecture of choice for ConvNeXt V2, and was used when benchmarking the semantic segmentation task performance (~50 mIoU on Ade20k)
 
 ## Implementation Ideas
-### Pytorch my beloved
+### Project Structure
 
+```
+cse164-final-project/
+│   **the pipeline itself**
+├── src/
+│   │
+│   │   **key deps, used throughout**
+│   ├── core/
+│   │   ├── dataset.py  # process the images into usable datasets - TODO: add a loader for the big unlabeled set
+│   │   ├── evaluate.py # all tools and calculations to find mIoU, macro-average accuracy, loss, etc
+│   │   ├── optim.py    # hold optimizers (like implementation in ConvNeXt-V2) - TODO
+│   │   ├── logging.py  # this has all logging to stdout and also to (project root)/logs/ - TODO
+│   │   └── utils.py    # tools used throughout the project - metadata parsing, seg_id to class_id, etc
+│   │                   # add utils from ConvNeXt-V2/utils.py to here - WIP
+│   │ 
+│   │   **the models, implemented in PyTorch**
+│   ├── models/
+│   │   │
+│   │   │   **convnext v2 - backbone** - DONE...?
+│   │   ├── convnext/
+│   │   │   ├── convnextv2.py         # dense convnextv2, also convnextv2 pipeline for classification 
+│   │   │   ├── convnextv2_sparse.py  # sparse convnextv2, for fcmae
+│   │   │   ├── fcmae.py              # pieces together convnextv2 pipeline for fcmae pre training
+│   │   │   ├── utils.py              # holds convnext utilities
+│   │   │   └── LICENSE 
+│   │   │
+│   │   │   **upernet - decoder for segmentation** - WIP
+│   │   ├── upernet/
+│   │   │   ├── upernet.py            # upernet decoder, also full pipeline for segmentation - **TODO**
+│   │   │   └── LICENSE 
+│   │   │
+│   │   │   **resnet-18 and unet - toy samples to check data input/output** - IGNORE
+│   │   ├── resnet/
+│   │   │   └── resnet.py             # resnet (not using)
+│   │   └── unet/
+│   │       └── unet.py               # unet (not using)
+│   │
+│   │   **defines epoch behavior in training**  - TODO
+│   ├── engines/       
+│   │   ├── fcmae_pretrain.py        # "train one epoch" for fcmae pretraining
+│   │   ├── convnext_cls.py          # "train one epoch" for classification by convnext  
+│   │   └── convnext_upernet_seg.py  # "train one epoch" for segmentation by convnext upernet pipeline 
+│   │
+│   │   **training harnesses - run # epochs, save checkpoints, set hyperparameters, load weights, etc** - TODO   
+│   ├── trainers/
+│   │   ├── train_pretrain.py  # training harness for pretraining - hyperparameters in, learned weights out
+│   │   ├── train_cls.py       # training harness for classification - longer epochs for fine tuning
+│   │   └── train_seg.py       # training harness for segmentation
+│   │
+│   │   **tests - create predictions** - TODO
+│   └── tests/
+│       ├── test_cls.py  # create predictions for classification
+│       └── test_seg.py  # create predictions for segmentation
+│
+│   **high-level users**
+├── notebook.ipynb  # interactive sanity-checks / scratchpad - IGNORE
+├── pipeline.py         # cli interface for train / test / etc - TODO
+│
+│   **utilities**
+├── checkpoints/  # store trained model weights - ideally timestamped/indexed
+│
+│   **test suite** - 
+├── tests/  # copy project structure of src, write unit tests for each function.
+│           # try out 1 epoch, check weight updates
+│           # key metrics to look out for are time, FLOPs
+│
+│   **course-provided code, has some useful implementations to copy from**
+├── starter/                      # course-provided, DO NOT EDIT
+│   ├── make_sample_submission_csv.py
+│   ├── validate_submission_csv.py   # ALWAYS run before submitting
+│   └── kaggle_metric.py             # reference scorer (decode_rle_to_mask etc.)
+│
+│   **data**
+├── data/
+│   ├── train_labeled/images/        # 7,500 imgs, IMAGE-LEVEL labels only
+│   ├── train_seg/{images,masks}/    # 3,000 imgs WITH segmentation masks
+│   ├── train_unlabeled/images/      # 50,000 imgs, NO labels (+ a few distractors)
+│   ├── val/{images,masks}/, classification.json   # 750 public, fully labeled
+│   ├── test/images/                 # 3,000 hidden test images
+│   └── metadata/{class_map,train_labeled,train_seg}.json
+│
+│   **claude**
+├── CLAUDE.md                     # this file — read before coding
+│
+│   **docker/environment tools**
+├── compose.yaml                  # `notebook` service (JupyterLab on :8888)
+├── docker/
+│   ├── Dockerfile                # CUDA 12.6 + PyTorch 2.12 + MinkowskiEngine build
+│   └── entrypoint.sh             # task dispatch (default: notebook)
+├── requirements.txt              # torch>=2.12 (cu126), torchvision, timm, tf, jupyter…
+├── venv/              
+│
+│   **key insights & project details**
+├── cooking/                      # research notes (Obsidian-style), NOT code, has some important details
+│   ├── PROJECT_SPEC.md           # the official competition spec
+│   ├── IDEATION.md               # committed approach + live roadmap
+│   ├── CONVNEXT.md               # ConvNeXt V1/V2 + FCMAE PAPER notes
+│   ├── CONVNEXTV2_CODEBASE.md    # reference SOURCE-CODE breakdown + our design choices
+│   ├── LECTURES.md               # FCN / segmentation lecture notes
+│   └── NOTES.md
+│
+|   **logging: track all stdout and errors** - TODO
+├── logs/  # key metrics to log: time, loss, error, metrics, FLOPs
+│
+|   **outputs: model predictions go here** - TODO
+├── outputs/  # store submission .csv files here, timestamp in names
+│
+|   **info** - IGNORE
+└── README.md                     # Docker usage (CLI/deps sections TODO)
 
+```
+    
 ## Roadmap
 **Mission Critical: MUST COMPLETE ASAP**
-1. Implement ConvNeXt backbone
-    - 
-2. Implement FCMAE pre-training
-    - 
-3. Pre-train the backbone with simple decoder
-    - Potentially send to Google Cloud VM?
-4. 
+
+1. Complete core/. These functions are going to be used everywhere else, and are easiest to get right.
+    - Data - the data extraction part is basically complete. What's missing is combining the unlabeled and labeled data to have an even bigger set of unlabeled data to pipe into FCMAE pretraining.
+    - Logging - be sure that logs go to files AND stdout, LOG USEFUL INFO!!
+    - utils - be sure to bring in utils from the cloned ConvNeXt-V2 repository
+    - evaluation - reference the starter code as frequently as possible!
+    - optim - just a copy
+2. Complete UperNet in a similar style to ConvNeXt V2. I/O should mirror roughly the same, BUT BE CAREFUL IF REFORMATTING. The code brought in from the official repo is functional and is the GOLD STANDARD, nothing logical nor computational should be touched. 
+3. Complete engines/. Once singular epoch behavior is defined, THEN training harness behavior can be defined.
+3. Complete trainers/. After the single epoch behavior is good to go, then the rest of the harness can be built up.
+    - Gotta make sure checkpointing works! If not, that'd be really bad because I'd have to keep training the model over and over and over again.
+4. Complete src/tests/. These are important to get our final results!
+5. Lastly, pipeline.py. This just needs to be able to do two things - facilitate training and testing
+
+### Rules for implementation!
+- Simple and clean are king! For this stage, don't try focusing on cramming a wide variety of functionality in. For now, just focus on creating a completed end-to-end pipeline. Try to write as little code as possible, think over decisions many times before deciding whether or not a line has to be written.
+- Not all libraries/dependencies will work. If there is an import issue, leave it. Don't try to solve those, take note, move on, and do what you can.
+- Do not overwrite much. If possible, DO NOT ERASE large chunks of code. If there is a big change you want to do, make note of it in CLAUDE.md, and they can be evaluated later.
+- Test as you go - although environment issues will make this hard - try to unit test functions as you go, make sure inputs and outputs map as exptected. Write at least three test cases per function - unless all three pass, do not make the changes to the function.

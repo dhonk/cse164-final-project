@@ -426,3 +426,114 @@ Note: this blurb's wording is like hella weird, might want to rewrite and fix la
         - Many dead/saturated feature maps
         - Mainly in dimension-expansion MLP layers
 #### Feature Cosine Distance Analysis 
+- Cosine distance
+- Activation tensor $X \in R^{H\times W\times C}$
+    - $\rightarrow X_i\in R^{H\times W}$ is feature map of $i$-th channel
+    - Reshape to $HW$ dimensional vector
+    ...
+- TL;DR, ConvNeXt V1 experiences feature collapse with FCMAE
+> Not yet in the paper, but this makes a lot of sense. Given the mask, it makes sense that certain filters are getting updates at certain points, leading to feature collapse.
+#### Approach
+- Human brain:
+    - Lateral inhibition
+- Global Response Normalization (GRN)
+    1. Global feature aggregation
+    2. Feature normalization
+    3. Feature calibration
+- **TODO: add the math here**
+- Pseudocode:
+    ```
+    # gamma, beta: learnable affine transform parameters
+    # X: input of shape (N, H, W, C)
+    
+    gx = torch.norm(X, p=2, dim=(1,2), keepdim=True)
+    nx = gx / (gx.mean(dim=-1, keepdim=True+1e-6))
+    return gamma * (X * nx) + beta + X
+    ```
+- L2 norm resulted in better performance than just global average pooling
+- **TODO: write more before putting this into Obsidian**
+- TLDR: GRN makes it better
+#### ConvNeXt V2
+-  Incorporated GRN into ConvNeXt block (before MLP layer)
+-  LayerScale becomes unnecessary, removed
+#### Impact of GRN
+- V2 + FCMAE gives +0.9 over V1 + FCMAE
+#### Relation to feature normalization methods
+- Can other layers perform as well?
+- GRN outperforms
+#### Relation to feature gating methods
+- **didn't read**
+#### Role of GRN in pre-training/fine tuning
+- When GRN is taken from fine tuning or pre-training, performance drops. Keep GRN in whole time.
+### ImageNet Experiments
+- ConvNeXt V2 popped off
+#### Co-Design Matters
+- Self-supervised framework and model architecture go hand-in-hand
+- FCMAE without architecture change gives little impact
+- GRN itself doesn't help either
+- Model and learning framework must be considered together
+- **Good to know for my project: as now I can use learning framework and model meant for each other.**
+#### Model Scaling
+- Atto size to Huge
+    - Atto has 3.7M
+    - **Start with Atto for my project?**
+#### Previous Method Comparison
+- TL;DR ConvNeXt V2 mogs
+- ViT model surpassed in Huge
+    - **Note for my project, scaling doesn't matter too much - dataset is kinda limited. Small scale gains matter more.**
+#### ImageNet-22K Intermediate Fine-Tuning
+- More fine-tuning
+### Transfer Learning Experiments
+#### COCO Object Detection & Segmentation
+- Kinda hard to follow what's being said in this paragraph
+#### Semantic Segmentation on ADE20k
+**MOST IMPORTANT FOR MY PROJECT**
+- Using UperNet framework
+- Significantly improves over V1
+- On par with Swin base, large, outperform huge
+    - Base does not do as well as Swin on base with mIoU, but is still very close (-0.7).
+### Conclusion
+- ConvNeXt V2 performs exceptionally well in the FCMAE regime, and shows the key insight that training regime and model architecture should be co-designed.
+### Appendix
+#### Implementation Details
+
+| Atto | Femto | Pico | Nano | Tiny | Big | Large | Huge | 
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| C=40 | C=48 | C=64 | C=80 | C=96 | C=128 | C=192 | C=352 |
+| B=(2, 2, 6, 2) | B=(2, 2, 6, 2) | B=(2, 2, 6, 2) | B=(2, 2, 8, 2) | B=(3, 3, 9, 3) | B=(3, 3, 27, 3) | B=(3, 3, 27, 3) | B=(3, 3, 27, 3) |
+
+#### Imagenet Experiments
+**Pre-Training**
+- Same pre-training setup
+
+| config | value |
+| --- | --- |
+| optimizer | AdamW |
+| base learning rate | 1.5e-4 |
+| weight decay | 0.05 |
+| optimizer momenetum | $\beta_1, \beta_2=$ 0.9, 0.5 |
+| batch size | 4096 | 
+| learning rate schedule | cosine decay |
+| warmup epochs | 40 |
+| training epochs | 800 or 1600 |
+| augmentation | RandomResizedCrop | 
+
+- Linear scaling rule $lr=baselr\times batchsize / 256$ (for warmup epochs)
+
+**ImageNet-1K Fine Tuning**
+- Fine tuning recipe varied by model size
+- **Longer fine-tuning epochs help small models**
+- 2 different learning-rate layer decay
+    - Group-wise
+        - 3 sequential layers is one "layer" - use same decaying value for them
+    - Layer-wise
+        - Distinct value for each layer
+    - Both standard decaying rule
+        - Default is layer-wise, group-wise applied to Base and Large
+            **Why??**
+**ImageNet-22K Intermediate Fine Tuning**
+- Setups + larger layer-wise learning rate decay values for small models:
+
+**Unfortunately, no info on integration with UperNet**.
+
+
