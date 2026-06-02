@@ -1,15 +1,22 @@
-__pycache__/
+# python
 *.toml
+build/
+__pycache__/
 
+
+# claude
+CLAUDE.md
 .claude/
+
+# jupyter
 .ipynb_checkpoints/
 
-build/
+# hidden to keep academic integrity
 cache/
 checkpoints/
-cooking/
-data/
 logs/
 outputs/
-starter/
+
+# too big
+data/
 venv/
