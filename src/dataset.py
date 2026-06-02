@@ -34,7 +34,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from torchvision import tv_tensors
 from torchvision.transforms import v2
 
@@ -255,3 +255,32 @@ def build_transforms(split: str, crop_size: int = 256):
     if split == "eval":
         return ImageTransform(crop_size, train=False)
     raise ValueError(f"unknown split for build_transforms: {split!r}")
+
+def build_dataloaders(batch_size: int):
+    l_loader = DataLoader(
+        dataset=TrainLabeledDataset("./data", build_transforms("cls")),
+        batch_size=batch_size,
+        num_workers=2,
+    )
+    seg_loader = DataLoader(
+        dataset=TrainSegDataset("./data", build_transforms("seg")),
+        batch_size=batch_size,
+        num_workers=2,
+    )
+    ul_loader = DataLoader(
+        dataset=TrainUnlabeledDataset("./data", build_transforms("unlabeled")),
+        batch_size=batch_size,
+        num_workers=2,
+    )
+    val_loader = DataLoader(
+        dataset=ValDataset("./data", build_transforms("eval")),
+        batch_size=batch_size,
+        num_workers=2,
+    )
+    test_loader = DataLoader(
+        dataset=TestDataset("./data", build_transforms("eval")),
+        batch_size=batch_size,
+        num_workers=2,
+    )
+
+    return l_loader, seg_loader, ul_loader, val_loader, test_loader

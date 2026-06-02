@@ -1,0 +1,34 @@
+# Captures the docker run boilerplate (GPU, bind mount) once.
+#
+#   docker compose run --rm cse164 train   -> run the `train` task (when wired up)
+#   docker compose run --rm cse164 shell   -> drop into bash
+#   docker compose up notebook             -> JupyterLab on http://localhost:8888
+#
+# JupyterLab is opt-in: it lives in its own `notebook` service behind a profile,
+# so a bare `docker compose up` never launches it. You must name it explicitly.
+name: cse164
+
+x-cse164: &cse164
+  image: dhonk/cse164:latest
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  gpus: all
+  volumes:
+    - .:/workspace
+  working_dir: /workspace
+
+services:
+  # Ad-hoc tasks: train / evaluate / validate / shell / any verbatim command.
+  cse164:
+    <<: *cse164
+
+  # Opt-in JupyterLab. Profile keeps it out of the default `up`; naming it
+  # (`docker compose up notebook`) activates the profile and publishes the port.
+  notebook:
+    <<: *cse164
+    command: notebook
+    ports:
+      - "8888:8888"
+    profiles:
+      - notebook

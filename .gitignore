@@ -2,11 +2,14 @@ __pycache__/
 *.toml
 
 .claude/
+.ipynb_checkpoints/
 
 build/
 cache/
 checkpoints/
+cooking/
 data/
 logs/
 outputs/
+starter/
 venv/
