@@ -13,7 +13,7 @@ from . import resnet, resnext, mobilenet, hrnet
 
 import src.models.convnext.convnextv2 as cv
 
-'''
+r'''
 from lib.nn import SynchronizedBatchNorm2d
 
 SynchronizedBatchNorm2d - from original codebase:
@@ -64,7 +64,10 @@ Consider trying out different encoder/decoder structures.
 This version stripped everything away and basically just left UPerNet
 '''
 
-BatchNorm2d = torch.nn.SyncBatchNorm
+# DEVIATION (single-GPU): the CSAILVision port used SyncBatchNorm, which requires
+# a DDP process group we never create. We train on one GPU, so plain BatchNorm2d
+# is the correct equivalent (SyncBN == BN for a single device anyway).
+BatchNorm2d = nn.BatchNorm2d
 
 class SegmentationModuleBase(nn.Module):
     def __init__(self):
@@ -251,3 +254,29 @@ class UPerNet(nn.Module):
         x = nn.functional.log_softmax(x, dim=1)
 
         return x
+
+
+def build_upernet(dims, num_class=301, fpn_dim=512):
+    """Build a randomly-initialized UPerNet decoder for our ConvNeXt V2 backbone.
+
+    ``dims`` is the backbone's per-stage channel tuple (the same ``dims`` passed
+    to the ConvNeXt size factory), e.g. atto = (40, 80, 160, 320). It feeds both
+    ``fc_dim`` (top stage, = ``dims[-1]``) and ``fpn_inplanes`` (all four stages),
+    so the decoder's lateral/PPM convs line up with ``forward_features_seg``'s
+    4-tuple of stride-4/8/16/32 feature maps.
+
+    ``num_class=301`` → seg ids 0..300 (background 0 + foreground 1..300); argmax
+    over the 301 channels yields the seg id directly. ``use_softmax=False`` so the
+    decoder emits ``log_softmax`` (paired with ``NLLLoss(ignore_index=1000)``);
+    weights are randomly initialized (NO pretrained weights — hard project rule).
+    """
+    dims = tuple(dims)
+    net = UPerNet(
+        num_class=num_class,
+        fc_dim=dims[-1],
+        use_softmax=False,
+        fpn_inplanes=dims,
+        fpn_dim=fpn_dim,
+    )
+    net.apply(ModelBuilder.weights_init)
+    return net

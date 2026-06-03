@@ -3,8 +3,7 @@
 build/
 __pycache__/
 
-
-# claude
+# claude files
 CLAUDE.md
 .claude/
 
@@ -21,5 +20,6 @@ outputs/
 data/
 venv/
 
-# lolz
-ConvNeXt-V2/
+# hidden because these are all my notes/ideas and reference code
+references/
+cooking/

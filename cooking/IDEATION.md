@@ -139,10 +139,14 @@ cse164-final-project/
 │
 │   **key insights & project details**
 ├── cooking/                      # research notes (Obsidian-style), NOT code, has some important details
+│   ├── references/               # reference source code! Any libraries copied from will live in here 
+│   │   └── ...                   # frequently reference and use as a guide
 │   ├── PROJECT_SPEC.md           # the official competition spec
 │   ├── IDEATION.md               # committed approach + live roadmap
 │   ├── CONVNEXT.md               # ConvNeXt V1/V2 + FCMAE PAPER notes
 │   ├── CONVNEXTV2_CODEBASE.md    # reference SOURCE-CODE breakdown + our design choices
+│   ├── CONVERSATIONSNOTES.md     # storage for notes and insight picked up in presentations, meetings, etc
+│   ├── CHANGELOG.md              # storage for any AI code assistant changes
 │   ├── LECTURES.md               # FCN / segmentation lecture notes
 │   └── NOTES.md
 │

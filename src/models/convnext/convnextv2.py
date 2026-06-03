@@ -1,3 +1,13 @@
+# Taken from -> https://github.com/facebookresearch/ConvNeXt-V2/
+
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# All rights reserved.
+
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+
 from __future__ import annotations
 
 '''
@@ -6,13 +16,6 @@ Ok, time to figure out what this architecture will look like, oh gosh.
 V1 Paper -> https://arxiv.org/pdf/2201.03545
 V2 Paper -> https://arxiv.org/pdf/2301.00808
 '''
-
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-
-# All rights reserved.
-
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
 
 import torch
 import torch.nn as nn
@@ -126,7 +129,7 @@ class ConvNeXtV2(nn.Module):
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.stages[i](x)
-            outs.append(getattr(self, f"norm{i}")(x))
+            outs.append(self.seg_norms[i](x))
         return tuple(outs)
 
     def forward(self, x):

@@ -34,7 +34,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, ConcatDataset
 from torchvision import tv_tensors
 from torchvision.transforms import v2
 
@@ -121,6 +121,27 @@ class TrainUnlabeledDataset(Dataset):
         path = self.paths[idx]
         image = Image.open(path).convert("RGB")
         return self.transform(image), path.name
+
+
+class ImageOnlyDataset(Dataset):
+    """Strip any split down to image tensors only, for FCMAE pre-training.
+
+    The image is ALWAYS element 0 of every split's ``__getitem__`` return
+    (TrainUnlabeled ``(image, name)``, TrainLabeled ``(image, label, name)``,
+    TrainSeg ``(image, label, seg_id, name)``), so taking ``[0]`` works
+    uniformly. FCMAE wants pixels only -- no labels/masks -- and a uniform
+    image-only item lets the default collate stack a clean ``(N, 3, C, C)``
+    batch (mixed-length tuples would break it).
+    """
+
+    def __init__(self, dataset: Dataset) -> None:
+        self.dataset = dataset
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+    def __getitem__(self, idx: int) -> torch.Tensor:
+        return self.dataset[idx][0]
 
 
 class ValDataset(Dataset):
@@ -255,6 +276,47 @@ def build_transforms(split: str, crop_size: int = 256):
     if split == "eval":
         return ImageTransform(crop_size, train=False)
     raise ValueError(f"unknown split for build_transforms: {split!r}")
+
+def build_pretrain_loader(
+    data_root: str | Path = "./data",
+    batch_size: int = 64,
+    crop_size: int = 224,
+    num_workers: int = 4,
+    shuffle: bool = True,
+    drop_last: bool = True,
+    pin_memory: bool = True,
+) -> DataLoader:
+    """Pooled image-only loader for FCMAE pre-training (~60.5k images).
+
+    Concatenates the three TRAINING splits with labels/masks stripped:
+    ``train_unlabeled`` (50k) + ``train_labeled`` (7.5k) + ``train_seg`` (3k).
+    val/test are deliberately walled off (never pooled) to avoid leakage. Every
+    item is a ``(3, C, C)`` float tensor with ``C % 32 == 0`` (default 224) so
+    FCMAE's patch/mask grid divides evenly. Each split is wrapped in
+    ``ImageOnlyDataset`` -- including ``TrainUnlabeledDataset`` so the concat
+    yields uniform image-only items the default collate can stack.
+
+    NOTE: train_seg still reads its mask PNG (SegTransform needs it for the joint
+    geometric crop) and we discard it -- a small, acceptable I/O cost over 3k imgs.
+    """
+    img_tf = ImageTransform(crop_size, train=True)
+    seg_tf = SegTransform(crop_size, train=True)
+    pool = ConcatDataset(
+        [
+            ImageOnlyDataset(TrainUnlabeledDataset(data_root, img_tf)),
+            ImageOnlyDataset(TrainLabeledDataset(data_root, img_tf)),
+            ImageOnlyDataset(TrainSegDataset(data_root, seg_tf)),
+        ]
+    )
+    return DataLoader(
+        pool,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        drop_last=drop_last,
+        pin_memory=pin_memory,
+    )
+
 
 def build_dataloaders(batch_size: int):
     l_loader = DataLoader(

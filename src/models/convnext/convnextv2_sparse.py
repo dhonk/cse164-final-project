@@ -1,3 +1,5 @@
+# Taken from -> https://github.com/facebookresearch/ConvNeXt-V2/
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
 # All rights reserved.

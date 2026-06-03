@@ -1,3 +1,5 @@
+# taken from -> 
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
 # All rights reserved.
@@ -9,16 +11,26 @@
 import torch
 from torch import optim as optim
 
-from timm.optim.adafactor import Adafactor
-from timm.optim.adahessian import Adahessian
-from timm.optim.adamp import AdamP
-from timm.optim.lookahead import Lookahead
-from timm.optim.nadam import Nadam
-from timm.optim.novograd import NovoGrad
-from timm.optim.nvnovograd import NvNovoGrad
-from timm.optim.radam import RAdam
-from timm.optim.rmsprop_tf import RMSpropTF
-from timm.optim.sgdp import SGDP
+'''
+I don't know why all of these are here when the paper only ever mentions using AdamW. Putting them away for now!
+(also to save headache of 67 million broken imports)
+
+
+''' 
+try:
+    from timm.optim.adafactor import Adafactor
+    from timm.optim.adahessian import Adahessian
+    from timm.optim.adamp import AdamP
+    from timm.optim.lookahead import Lookahead
+    from timm.optim.nadam import Nadam
+    from timm.optim.novograd import NovoGrad
+    from timm.optim.nvnovograd import NvNovoGrad
+    from timm.optim.radam import RAdam
+    from timm.optim.rmsprop_tf import RMSpropTF
+    from timm.optim.sgdp import SGDP
+except ImportError:
+    Adafactor = Adahessian = AdamP = Lookahead = Nadam = None
+    NovoGrad = NvNovoGrad = RAdam = RMSpropTF = SGDP = None
 
 import json
 

@@ -537,3 +537,92 @@ Note: this blurb's wording is like hella weird, might want to rewrite and fix la
 **Unfortunately, no info on integration with UperNet**.
 
 
+## Code Reference 1 - https://github.com/facebookresearch/ConvNeXt-V2
+### utils.py
+- **imports that break**
+    - from timm.utils import get_state_dict
+        - apparently imported from timm.utils.model
+        - what does it do?
+            - calls unwrap_fn, default unwrap_model
+            - what does unwrap_model do?
+                - uses hasattr to basically find the *actual* model hidden in wrappers
+                - (e.g. EMA)
+            - then it returns the .state_dict() of the model
+                - what is the .state_dict()?
+                - from torch.nn.Module
+                    - state_dict() basically returns a dictionary referring to the state of the module
+                    - parameters and persistent buffers (running averages)
+                    - keys: parameter & buffer names
+                        - set to None not included
+        - TL;DR, this import basically just gives a function that gets the state_dict() of a model
+            - why not just torch.nn.Module.state_dict()?
+            - if there's a wrapper prefix, the param picks it up
+                - e.g. module.conv1.weight vs conv1.weight
+    
+    - from torch._six import inf
+        - literally is just math.inf.
+        - what. the. hell.
+
+    - from tensorboardX import SummaryWriter
+        - highkey helpful for visualization!
+        - consider adding to this project
+
+- **functions**
+    - str2bool(v): literally converts string to bool
+        - missing argparse - just import
+
+    - setup_for_distributed(is_master):
+        - disables printing when not in master process, idt it matters for this bcs 1 system
+    
+    - is_dist_avail_and_initialized():
+        - check if setup for torch distributed
+
+    - get_world_size():
+        - get number of systems/etc (in one system case, returns 1)
+
+    - get_rank():
+        - distributed system stuff, returns rank of the system
+
+    - is_main_process():
+        - check if main process (rank == 0)
+
+    - save_on_master():
+        - if it's the main process, torch.save() -> save to disk file!
+
+    - init_distributed_mode(args):
+        - idk what this means, but for this case (1 system 1 gpu) i don't think this matters
+
+    - all_reduce_mean(x)
+        - reduces mean! by the number of processes in the world
+        - if world size is 1, return the input tensor (prob my case)
+
+    - load_state_dict(model, state_dict, prefix='', ignore_missing="relative_position_index")
+        - load in pretrained model given a state dict
+
+    - get_grad_norm(parameters, norm_type: float=2.0) -> torch.Tensor
+        - computes total gradient norm, used for logging/monitoring
+
+    - save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, model_ema=None)
+        - gets output dir from args, saves to there
+        - I wonder if I can get around this because I'm using one gpu...?
+        - Important note - this deletes checkpoints!
+    
+    - auto_load_model( ... )
+        - auto loads
+
+    - everything else should honestly just work I'm too tired to read more
+
+- **classes**
+    - Imma ignore those
+
+### optim_factory.py
+- **broken imports**
+    - tldr - all of these broken imports are just updated
+    - but also - these aren't necessary, paper reports just using AdamW
+    - AdamW ftw!!! honestly this file *could* just be ignored BUT
+
+- **functions**
+    - get_num_layer_for_convnext_single:
+        - 
+
+- **classes**

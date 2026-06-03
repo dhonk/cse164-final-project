@@ -21,3 +21,9 @@ why is it so hard to get sparse convolutions... PAIN
 - Let's see if Docker works right!!
 - Ok, now the other way...?
     - OKAYYYYYY
+
+- WAIT IDEA
+    - The model is being kinda forced to learn a "useless" class - the background class
+    - Remember UNet toy results - background saturated the results
+        - Separation of foreground and background?
+    

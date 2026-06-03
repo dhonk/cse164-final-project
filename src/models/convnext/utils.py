@@ -1,3 +1,5 @@
+# Taken from -> https://github.com/facebookresearch/ConvNeXt-V2/
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
 # All rights reserved.
@@ -11,11 +13,17 @@ import numpy.random as random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from MinkowskiEngine import SparseTensor
+
+# guard added for testing on local machine - test dense/GRN
+try:
+    from MinkowskiEngine import SparseTensor
+except ImportError:
+    SparseTensor = None
 
 class MinkowskiGRN(nn.Module):
     """ GRN layer for sparse tensors.
     """
+    
     def __init__(self, dim):
         super().__init__()
         self.gamma = nn.Parameter(torch.zeros(1, dim))
@@ -82,6 +90,7 @@ class LayerNorm(nn.Module):
     shape (batch_size, height, width, channels) while channels_first corresponds to inputs 
     with shape (batch_size, channels, height, width).
     """
+
     def __init__(self, normalized_shape, eps=1e-6, data_format="channels_last"):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(normalized_shape))
@@ -105,6 +114,7 @@ class LayerNorm(nn.Module):
 class GRN(nn.Module):
     """ GRN (Global Response Normalization) layer
     """
+
     def __init__(self, dim):
         super().__init__()
         self.gamma = nn.Parameter(torch.zeros(1, 1, 1, dim))
