@@ -5,12 +5,6 @@ import torch.nn as nn
 
 # ================================ FIXING IMPORTS ================================
 
-'''
-from . import resnet, resnext, mobilenet, hrnet
-
-^ These aren't needed, we're using ConvNeXtV2
-'''
-
 import src.models.convnext.convnextv2 as cv
 
 r'''
@@ -67,7 +61,6 @@ This version stripped everything away and basically just left UPerNet
 # DEVIATION (single-GPU): the CSAILVision port used SyncBatchNorm, which requires
 # a DDP process group we never create. We train on one GPU, so plain BatchNorm2d
 # is the correct equivalent (SyncBN == BN for a single device anyway).
-BatchNorm2d = nn.BatchNorm2d
 
 class SegmentationModuleBase(nn.Module):
     def __init__(self):
@@ -161,7 +154,7 @@ def conv3x3_bn_relu(in_planes, out_planes, stride=1):
     return nn.Sequential(
             nn.Conv2d(in_planes, out_planes, kernel_size=3,
                       stride=stride, padding=1, bias=False),
-            BatchNorm2d(out_planes),
+            nn.BatchNorm2d(out_planes),
             nn.ReLU(inplace=True),
         )
 
@@ -181,7 +174,7 @@ class UPerNet(nn.Module):
             self.ppm_pooling.append(nn.AdaptiveAvgPool2d(scale))
             self.ppm_conv.append(nn.Sequential(
                 nn.Conv2d(fc_dim, 512, kernel_size=1, bias=False),
-                BatchNorm2d(512),
+                nn.BatchNorm2d(512),
                 nn.ReLU(inplace=True)
             ))
         self.ppm_pooling = nn.ModuleList(self.ppm_pooling)
@@ -193,7 +186,7 @@ class UPerNet(nn.Module):
         for fpn_inplane in fpn_inplanes[:-1]:   # skip the top layer
             self.fpn_in.append(nn.Sequential(
                 nn.Conv2d(fpn_inplane, fpn_dim, kernel_size=1, bias=False),
-                BatchNorm2d(fpn_dim),
+                nn.BatchNorm2d(fpn_dim),
                 nn.ReLU(inplace=True)
             ))
         self.fpn_in = nn.ModuleList(self.fpn_in)

@@ -27,6 +27,10 @@ are read at their native resolution and encoded with ignore (1000) preserved, so
 the scorer can skip those pixels.
 """
 
+### GRRRR I DONT WANNA REFACTOR ALL THIS BUT ITS PROLLY MID...
+
+### TODO: REFACTOR AFTER MODELS DONE
+
 from __future__ import annotations
 
 import importlib.util
@@ -38,7 +42,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from .utils import encode_rle, rgb_to_seg_id
+from .utils import rgb_to_seg
 
 SUBMISSION_COLUMNS = ["image", "class_id", "segmentation_rle"]
 

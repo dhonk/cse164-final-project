@@ -1,5 +1,5 @@
 """
-utils.py: provide shared helpers
+utils.py: provide shared helpers and constants
 
 """
 
@@ -19,7 +19,8 @@ import torch
 
 
 NUM_CLASSES = 300
-IGNORE_ID = 1000
+IGNORE_IDX = 1000
+BATCH_SIZE = 64
 
 
 def seed_everything(seed: int = 0) -> None:
@@ -104,8 +105,8 @@ def decode_rle_to_mask(
         if start < 1 or length < 1:
             raise ValueError("RLE starts and lengths must be positive")
         
-        if value < 1 or (value > num_classes and not (allow_ignore and value == IGNORE_ID)):
-            allowed = f"1..{num_classes}" + (f" or {IGNORE_ID}" if allow_ignore else "")
+        if value < 1 or (value > num_classes and not (allow_ignore and value == IGNORE_IDX)):
+            allowed = f"1..{num_classes}" + (f" or {IGNORE_IDX}" if allow_ignore else "")
             raise ValueError(f"RLE values must be in {allowed}")
         
         begin = start - 1
@@ -161,7 +162,7 @@ def mask_check(mask: np.ndarray, num_classes: int = NUM_CLASSES) -> bool:
         valid (bool): whether or not provided segmentation mask has only valid classes
     """
     valid = np.all((mask >= 0) & (mask <= NUM_CLASSES))
-    valid = valid and np.all(mask != IGNORE_ID) 
+    valid = valid and np.all(mask != IGNORE_IDX) 
     return bool(valid)
 
 
@@ -178,7 +179,7 @@ def mask_confusion_matrix(pred: np.ndarray, gt: np.ndarray, num_classes: int) ->
         hist.reshape(num_classes + 1, num_classes + 1)
     """
     pred = np.where((pred >= 0) & (pred <= num_classes), pred, 0)
-    valid = gt != IGNORE_ID
+    valid = gt != IGNORE_IDX
     valid &= gt >= 0
     valid &= gt <= num_classes
     labels = (num_classes + 1) * gt[valid].astype(np.int64) + pred[valid].astype(np.int64)
@@ -221,7 +222,7 @@ def boundary_map(ids: np.ndarray) -> np.ndarray:
         boundary: np.ndarray boundary map
     """
     
-    valid = ids != IGNORE_ID
+    valid = ids != IGNORE_IDX
     boundary = np.zeros(ids.shape, dtype=bool)
     boundary[:-1, :] |= (ids[:-1, :] != ids[1:, :]) & valid[:-1, :] & valid[1:, :]
     boundary[1:, :] |= (ids[:-1, :] != ids[1:, :]) & valid[:-1, :] & valid[1:, :]
@@ -276,7 +277,7 @@ def boundary_f_score(pred: np.ndarray, gt: np.ndarray, radius: int = 2) -> float
     """
     
     pred = pred.copy()
-    pred[gt == IGNORE_ID] = IGNORE_ID
+    pred[gt == IGNORE_IDX] = IGNORE_IDX
     pred_boundary = boundary_map(pred)
     gt_boundary = boundary_map(gt)
     if pred_boundary.sum() == 0 and gt_boundary.sum() == 0:
@@ -313,7 +314,7 @@ def label_seg_to_cls(seg_label: int) -> int:
     Map a foreground segmentation class label to a classification label
 
     Foreground seg label (1 ... 300) -> cls label (0 ... 299).
-    Special rules: background label (0) IGNORE_ID (1000) ignored
+    Special rules: background label (0) IGNORE_IDX (1000) ignored
 
     args:
         seg_label: a segmentation label
@@ -322,7 +323,7 @@ def label_seg_to_cls(seg_label: int) -> int:
     """
     if (seg_label > 0) and (seg_label <= 300):
         return seg_label - 1
-    return IGNORE_ID
+    return IGNORE_IDX
 
 
 def label_cls_to_seg(cls_label: int) -> int:
@@ -330,7 +331,7 @@ def label_cls_to_seg(cls_label: int) -> int:
     Map a classification label to a segmentation foreground class label.
 
     cls label (0 ... 299) -> foreground seg label (1 ... 300).
-    special rules: invalid labels get treated with IGNORE_ID
+    special rules: invalid labels get treated with IGNORE_IDX
     
     args:
         cls_label: a classification label
@@ -339,7 +340,7 @@ def label_cls_to_seg(cls_label: int) -> int:
     """
     if (cls_label >= 0) and (cls_label < 300):
         return cls_label + 1
-    return IGNORE_ID
+    return IGNORE_IDX
 
 
 def mask_seg_to_cls(seg_mask: np.ndarray) -> np.ndarray:
@@ -347,7 +348,7 @@ def mask_seg_to_cls(seg_mask: np.ndarray) -> np.ndarray:
     Map a segmentation mask to an image-level class label mask.
 
     Foreground seg id k (1..300) -> class id k-1 (0..299); background (0) and
-    ignore (1000) -> IGNORE_ID so a CrossEntropy loss skips them.
+    ignore (1000) -> IGNORE_IDX so a CrossEntropy loss skips them.
 
     NOTE: realistically the program should never use this!
 
@@ -357,7 +358,7 @@ def mask_seg_to_cls(seg_mask: np.ndarray) -> np.ndarray:
         cls_mask: a segmentation mask translated into class labels 
     """
 
-    cls_mask = np.full(seg_mask.shape, IGNORE_ID, dtype=np.int64)
+    cls_mask = np.full(seg_mask.shape, IGNORE_IDX, dtype=np.int64)
     fg = (seg_mask > 0) & (seg_mask <= NUM_CLASSES)
     cls_mask[fg] = seg_mask[fg] - 1
     return cls_mask
@@ -368,7 +369,7 @@ def mask_cls_to_seg(cls_mask: np.ndarray) -> np.ndarray:
     Map a class label mask to a segmentation mask.
 
     Foreground seg id k (1..300) -> class id k-1 (0..299); background (0) and
-    ignore (1000) -> IGNORE_ID so a CrossEntropy loss skips them.
+    ignore (1000) -> IGNORE_IDX so a CrossEntropy loss skips them.
 
     NOTE: realistically the program should never use this!
 
@@ -417,6 +418,7 @@ def project_root() -> Path:
 
 # next section has convnext utils
 # TODO: refactor as convnext gets adopted!
+# everything up is very good. below is... not as good
 
 # taken from ConvNeXt-V2 -> https://github.com/facebookresearch/ConvNeXt-V2/
 def str2bool(v) -> bool:
@@ -598,7 +600,7 @@ class NativeScaler:
     state_dict_key = "amp_scaler"
 
     def __init__(self):
-        self._scaler = torch.amp.GradScaler("cuda")
+        self._scaler = torch.amp.GradScaler("cuda") # type: ignore
 
     def __call__(self, loss, optimizer, clip_grad=None, parameters=None,
                  create_graph=False, update_grad=True):
@@ -611,7 +613,7 @@ class NativeScaler:
                 norm = torch.nn.utils.clip_grad_norm_(parameters, clip_grad)
             else:
                 self._scaler.unscale_(optimizer)
-                norm = get_grad_norm_(parameters)
+                norm = get_grad_norm(parameters)
             self._scaler.step(optimizer)
             self._scaler.update()
         return norm

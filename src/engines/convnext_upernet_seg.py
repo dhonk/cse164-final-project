@@ -26,14 +26,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..core.utils import IGNORE_ID, MetricLogger, SmoothedValue, adjust_learning_rate
+from ..core.utils import IGNORE_IDX, MetricLogger, SmoothedValue, adjust_learning_rate
 
 
 @torch.no_grad()
 def pixel_accuracy(logits: torch.Tensor, target: torch.Tensor) -> float:
     """Fraction of correctly-classified pixels, excluding ignore (1000) pixels."""
     preds = logits.argmax(dim=1)
-    valid = target != IGNORE_ID
+    valid = target != IGNORE_IDX
     total = int(valid.sum())
     if total == 0:
         return 0.0

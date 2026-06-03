@@ -137,7 +137,7 @@ class ConvNeXtV2(nn.Module):
         x = self.head(x)
         return x
 
-def convnextv2_atto(**kwargs): # Try with atto first
+def convnextv2_atto(**kwargs):
     model = ConvNeXtV2(depths=[2, 2, 6, 2], dims=[40, 80, 160, 320], **kwargs)
     return model
 

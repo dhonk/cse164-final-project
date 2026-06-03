@@ -14,11 +14,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# guard added for testing on local machine - test dense/GRN
-try:
-    from MinkowskiEngine import SparseTensor
-except ImportError:
-    SparseTensor = None
+# issok no local testing
+from MinkowskiEngine import SparseTensor # type: ignore
+
 
 class MinkowskiGRN(nn.Module):
     """ GRN layer for sparse tensors.
@@ -39,6 +37,7 @@ class MinkowskiGRN(nn.Module):
                 self.gamma * (x.F * Nx) + self.beta + x.F,
                 coordinate_map_key=in_key,
                 coordinate_manager=cm)
+
 
 class MinkowskiDropPath(nn.Module):
     """ Drop Path for sparse tensors.
@@ -66,6 +65,7 @@ class MinkowskiDropPath(nn.Module):
                 coordinate_map_key=in_key,
                 coordinate_manager=cm)
 
+
 class MinkowskiLayerNorm(nn.Module):
     """ Channel-wise layer normalization for sparse tensors.
     """
@@ -84,6 +84,7 @@ class MinkowskiLayerNorm(nn.Module):
             coordinate_map_key=input.coordinate_map_key,
             coordinate_manager=input.coordinate_manager)
             
+
 class LayerNorm(nn.Module):
     """ LayerNorm that supports two data formats: channels_last (default) or channels_first. 
     The ordering of the dimensions in the inputs. channels_last corresponds to inputs with 
@@ -110,6 +111,7 @@ class LayerNorm(nn.Module):
             x = (x - u) / torch.sqrt(s + self.eps)
             x = self.weight[:, None, None] * x + self.bias[:, None, None]
             return x
+
 
 class GRN(nn.Module):
     """ GRN (Global Response Normalization) layer
