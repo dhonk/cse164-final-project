@@ -4,7 +4,7 @@ build/
 __pycache__/
 
 # claude files
-CLAUDE.md
+# CLAUDE.md
 .claude/
 
 # jupyter
@@ -22,4 +22,7 @@ venv/
 
 # hidden because these are all my notes/ideas and reference code
 references/
-cooking/
+# cooking/
+
+# keep from entering final codebase
+# starter/
