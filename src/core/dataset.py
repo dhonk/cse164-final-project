@@ -1,30 +1,33 @@
 """
-Datasets
+dataset.py: load images from directory and prepare to be used by project pipeline
 
-One Dataset class per split. Every __getitem__ also returns the image filename
-(handy for logging / debugging / pseudo-label bookkeeping, even if unused):
+dataset file structure (from kaggle competition)
 
-Dataset Descriptions:
+    data/
+    ├── metadata/
+    │   ├── class_map.json
+    │   ├── train_labeled.json
+    │   └── train_seg.json
+    ├── test/images/
+    ├── train_labeled/images/
+    ├── train_seg/
+    │   ├── images/
+    │   └── masks/
+    ├── train_unlabeled/images/
+    └── val/
+        ├── images/
+        ├── masks/
+        └── classification.json
+
     train_labeled   -> TrainLabeledDataset    image + class_id           (7,500)
     train_seg       -> TrainSegDataset        image + class_id + mask    (3,000)
-    train_unlabeled -> TrainUnlabeledDataset  image only (+ distractors) (50,000)
+    train_unlabeled -> TrainUnlabeledDataset  image                      (50,000)
     val             -> ValDataset             image + class_id + mask    (750)
-    test            -> TestDataset            image only                 (3,000)
+    test            -> TestDataset            image                      (3,000)
 
-val is fully labeled but for model selection / scoring ONLY -- never train on it.
-
-Return-type contract (every split, always -- no PIL/numpy leaks):
-    image     float32 tensor (3, C, C)        C = transform crop/eval size
-    label     int                             (splits with class labels)
-    seg_id    long tensor                     TrainSeg: (C, C);
-                                              Val: ORIGINAL (H, W) for scoring
-    name      str                             image filename
-    orig_size tuple(W, H)                     Val/Test, for resizing preds back
-
-A ``transform`` is REQUIRED for every dataset (use ``build_transforms(split)``);
-there is no raw-PIL fallback. This keeps return types uniform so loader / collate
-/ metric code never has to branch on PIL-vs-tensor or numpy-vs-tensor.
 """
+
+
 
 from __future__ import annotations
 

@@ -1,14 +1,12 @@
-"""Shared helpers: reproducibility, mask <-> id encoding, RLE.
-
-Mask spec (see CLAUDE.md):
-    segmentation_id = R + G * 256
-    0          -> background / non-target
-    1..300     -> foreground, segmentation_id = class_id + 1
-    1000       -> ignore region (ground-truth only, never predicted)
 """
+utils.py: provide shared helpers
+
+"""
+
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import math
 import random
@@ -19,15 +17,16 @@ from pathlib import Path
 import numpy as np
 import torch
 
-IGNORE_ID = 1000
-NUM_CLASSES = 300
 
-# Logging helpers now LIVE in core.logging (their canonical home). Import from
-# there -- e.g. ``from src.core.logging import setup_logging, get_logger``.
+NUM_CLASSES = 300
+IGNORE_ID = 1000
 
 
 def seed_everything(seed: int = 0) -> None:
-    """Seed Python / NumPy / Torch RNGs for reproducible runs."""
+    """
+    Seed Python / NumPy / Torch RNGs for reproducible runs.
+    """
+
     import torch
 
     random.seed(seed)
@@ -36,52 +35,23 @@ def seed_everything(seed: int = 0) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
-def rgb_to_seg_id(mask_rgb: np.ndarray) -> np.ndarray:
-    """Decode an (H, W, 3) RGB PNG mask into an (H, W) segmentation-id array."""
-    r = mask_rgb[..., 0].astype(np.int64)
-    g = mask_rgb[..., 1].astype(np.int64)
-    return r + g * 256
-
-
-def seg_id_to_class_id(seg_id: np.ndarray) -> np.ndarray:
-    """Map a segmentation-id map to an image-level class-id label map.
-
-    Foreground seg id k (1..300) -> class id k-1 (0..299); background (0) and
-    ignore (1000) -> IGNORE_ID so a CrossEntropy loss skips them. NOT used by the
-    seg branch -- the seg head trains directly on seg ids -- but provided for
-    completeness / deriving class labels from masks.
+# from starter code provided through kaggle - kaggle_metric.py:
+def encode_mask_ids(mask_ids: np.ndarray) -> str:
     """
-    seg_id = np.asarray(seg_id, dtype=np.int64)
-    out = np.full(seg_id.shape, IGNORE_ID, dtype=np.int64)
-    fg = (seg_id >= 1) & (seg_id <= NUM_CLASSES)
-    out[fg] = seg_id[fg] - 1
-    return out
+    Encode a 2D id mask as row-major 1-indexed RLE triples.
 
+    The encoded string is a space-separated sequence of:
 
-def class_id_to_seg_id(class_id: np.ndarray) -> np.ndarray:
-    """Inverse of `seg_id_to_class_id`: foreground class k -> seg id k+1.
+        start length value start length value ...
 
-    NOTE: inference does NOT need this -- the model's seg head emits seg ids
-    directly (301 channels whose index == seg id), so ``argmax`` already yields
-    0..300. Kept for round-tripping / building masks from class-indexed maps.
+    Only non-background pixels are stored. `start` is 1-indexed after row-major
+    flattening, `length` is the run length, and `value` is the segmentation id.
     """
-    return np.asarray(class_id, dtype=np.int64) + 1
 
-
-def encode_rle(seg_mask: np.ndarray) -> str:
-    """Encode an (H, W) segmentation-id mask as row-major 1-indexed RLE triples.
-
-    Only non-zero (foreground) pixels are stored as ``start length value``
-    triples: ``start`` is 1-indexed into the row-major flattened mask, ``length``
-    is the run length, and ``value`` is the seg id (1..300). Background (0) is left
-    as gaps; an all-background mask encodes to ``"0"`` (NOT an empty string) so the
-    submission CSV never contains null/NaN fields. The official decoder
-    (kaggle_metric.decode_rle_to_mask) treats "0" and "" identically.
-    """
-    flat = np.asarray(seg_mask, dtype=np.int64).reshape(-1)
+    flat = np.asarray(mask_ids, dtype=np.int64).reshape(-1)
     nonzero = flat != 0
     if not np.any(nonzero):
-        return "0"
+        return ""
     idx = np.flatnonzero(nonzero)
     values = flat[idx]
 
@@ -99,24 +69,391 @@ def encode_rle(seg_mask: np.ndarray) -> str:
     return " ".join(parts)
 
 
-def get_device():
+# from starter code provided through kaggle - kaggle_metric.py:
+def _is_missing_rle(value: object) -> bool:
+    return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+# modified starter code provided through kaggle - kaggle_metric.py:
+def decode_rle_to_mask(
+    rle: object,
+    height: int,
+    width: int,
+    num_classes: int = NUM_CLASSES,
+    allow_ignore: bool = False,
+) -> np.ndarray:
+    """
+    Decode row-major RLE triples into a dense segmentation-id mask.
+    """
+    
+    total = int(height) * int(width)
+    mask = np.zeros(total, dtype=np.uint16)
+    if _is_missing_rle(rle) or str(rle).strip() in {"", "0"}:
+        return mask.reshape((int(height), int(width)))
+
+    try:
+        tokens = [int(tok) for tok in str(rle).split()]
+    except ValueError as exc:
+        raise ValueError("segmentation_rle must contain integer tokens only") from exc
+
+    if len(tokens) % 3 != 0:
+        raise ValueError("segmentation_rle must contain start length value triples")
+
+    used = np.zeros(total, dtype=bool)
+    for start, length, value in zip(tokens[0::3], tokens[1::3], tokens[2::3]):
+        if start < 1 or length < 1:
+            raise ValueError("RLE starts and lengths must be positive")
+        
+        if value < 1 or (value > num_classes and not (allow_ignore and value == IGNORE_ID)):
+            allowed = f"1..{num_classes}" + (f" or {IGNORE_ID}" if allow_ignore else "")
+            raise ValueError(f"RLE values must be in {allowed}")
+        
+        begin = start - 1
+        end = begin + length
+        
+        if end > total:
+            raise ValueError("RLE run extends past the image size")
+        
+        if used[begin:end].any():
+            raise ValueError("RLE runs must not overlap")
+        
+        used[begin:end] = True
+        mask[begin:end] = value
+        
+    return mask.reshape((int(height), int(width)))
+
+
+# modified starter code provided through kaggle - kaggle_metric.py:
+def cls_metrics(pred: dict[str, int], gt: dict[str, int], num_classes: int = NUM_CLASSES) -> tuple[float, float]:
+    """
+    calculate accuracy and macro accuracy of classification task given predictions and ground truths.
+
+    args:
+        pred (dict[str, int]): dictionary of {filename: label}
+        gt   (dict[str, int]): dictionary of {filename: label}
+    returns:
+        accuracy, macor_accuracy (tuple[float, float]): accuracy, macro_accuracy
+    """
+
+    images = sorted(gt)
+    correct = np.array([pred.get(image) == gt[image] for image in images], dtype=np.float64)
+    accuracy = float(correct.mean()) if len(correct) else 0.0
+
+    per_class = []
+    for class_id in range(num_classes):
+        class_images = [image for image in images if gt[image] == class_id]
+        if class_images:
+            per_class.append(float(np.mean([pred.get(image) == class_id for image in class_images])))
+
+    macro_accuracy = float(np.mean(per_class)) if per_class else 0.0
+
+    return accuracy, macro_accuracy
+
+
+def mask_check(mask: np.ndarray, num_classes: int = NUM_CLASSES) -> bool:
+    """
+    check that segmentation-id mask only has valid class labels.
+
+    args:
+        mask (np.ndarray): the segmentation mask
+        num_classes (int): the number of classes
+    returns:
+        valid (bool): whether or not provided segmentation mask has only valid classes
+    """
+    valid = np.all((mask >= 0) & (mask <= NUM_CLASSES))
+    valid = valid and np.all(mask != IGNORE_ID) 
+    return bool(valid)
+
+
+# modified starter code provided through kaggle - kaggle_metric.py:
+def mask_confusion_matrix(pred: np.ndarray, gt: np.ndarray, num_classes: int) -> np.ndarray:
+    """
+    create mask confusion matrix
+
+    args:
+        pred:        predicted segmentation mask
+        gt:          ground truth segmentation mask
+        num_classes: number of classes
+    returns:
+        hist.reshape(num_classes + 1, num_classes + 1)
+    """
+    pred = np.where((pred >= 0) & (pred <= num_classes), pred, 0)
+    valid = gt != IGNORE_ID
+    valid &= gt >= 0
+    valid &= gt <= num_classes
+    labels = (num_classes + 1) * gt[valid].astype(np.int64) + pred[valid].astype(np.int64)
+    hist = np.bincount(labels, minlength=(num_classes + 1) ** 2)
+    return hist.reshape(num_classes + 1, num_classes + 1)
+
+
+# modified starter code provided through kaggle - kaggle_metric.py:
+def iou_from_confusion(hist: np.ndarray, class_ids: list[int]) -> tuple[float, dict[int, float]]:
+    """
+    get miou from confusion matrix
+
+    args:
+        hist:      histogram
+        class_ids: ground truth class ids
+    returns:
+        mean_iou:  mean iou metric
+        per_class: per-class iou
+    """
+    per_class: dict[int, float] = {}
+    for class_id in class_ids:
+        tp = hist[class_id, class_id]
+        fp = hist[:, class_id].sum() - tp
+        fn = hist[class_id, :].sum() - tp
+        denom = tp + fp + fn
+        if denom > 0:
+            per_class[class_id] = float(tp / denom)
+    mean_iou = float(np.mean(list(per_class.values()))) if per_class else 0.0
+    return mean_iou, per_class
+
+
+# modified starter code provided through kaggle - kaggle_metric.py:
+def boundary_map(ids: np.ndarray) -> np.ndarray:
+    """
+    Mark every pixel that sits on a class boundary
+
+    args:
+        ids: segmentation map
+    returns:
+        boundary: np.ndarray boundary map
+    """
+    
+    valid = ids != IGNORE_ID
+    boundary = np.zeros(ids.shape, dtype=bool)
+    boundary[:-1, :] |= (ids[:-1, :] != ids[1:, :]) & valid[:-1, :] & valid[1:, :]
+    boundary[1:, :] |= (ids[:-1, :] != ids[1:, :]) & valid[:-1, :] & valid[1:, :]
+    boundary[:, :-1] |= (ids[:, :-1] != ids[:, 1:]) & valid[:, :-1] & valid[:, 1:]
+    boundary[:, 1:] |= (ids[:, :-1] != ids[:, 1:]) & valid[:, :-1] & valid[:, 1:]
+    return boundary
+
+
+# modified starter code provided through kaggle - kaggle_metric.py:
+def dilate_boundary(mask: np.ndarray, radius: int = 2) -> np.ndarray:
+    """
+    Given a boundary map, apply dialation by radius
+
+    args:
+        mask:   a boundary map
+        radius: radius to dialate by (default 2)
+    returns:
+        result: the dialated boundary map
+    """
+    result = mask.copy()
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            if dy * dy + dx * dx > radius * radius:
+                continue
+            y_src_start = max(0, -dy)
+            y_src_end = mask.shape[0] - max(0, dy)
+            x_src_start = max(0, -dx)
+            x_src_end = mask.shape[1] - max(0, dx)
+            y_dst_start = max(0, dy)
+            y_dst_end = mask.shape[0] - max(0, -dy)
+            x_dst_start = max(0, dx)
+            x_dst_end = mask.shape[1] - max(0, -dx)
+            result[y_dst_start:y_dst_end, x_dst_start:x_dst_end] |= mask[
+                y_src_start:y_src_end,
+                x_src_start:x_src_end,
+            ]
+    return result
+
+
+# modified starter code provided through kaggle - kaggle_metric.py:
+def boundary_f_score(pred: np.ndarray, gt: np.ndarray, radius: int = 2) -> float:
+    """
+    Given predicted and ground truth segmentation maps, apply dilation by radius 
+    and calculate f-score.
+
+    args:
+        pred:    predicted segmentation map
+        gt:      ground truth segmentation map
+        radius:  radius to dilate by (default = 2)
+    returns:
+        f-score: the f score of the predicted boundary map
+    """
+    
+    pred = pred.copy()
+    pred[gt == IGNORE_ID] = IGNORE_ID
+    pred_boundary = boundary_map(pred)
+    gt_boundary = boundary_map(gt)
+    if pred_boundary.sum() == 0 and gt_boundary.sum() == 0:
+        return 1.0
+    if pred_boundary.sum() == 0 or gt_boundary.sum() == 0:
+        return 0.0
+    pred_match = pred_boundary & dilate_boundary(gt_boundary, radius)
+    gt_match = gt_boundary & dilate_boundary(pred_boundary, radius)
+    precision = pred_match.sum() / max(1, pred_boundary.sum())
+    recall = gt_match.sum() / max(1, gt_boundary.sum())
+    if precision + recall == 0:
+        return 0.0
+    return float(2 * precision * recall / (precision + recall))
+
+
+# modified starter code provided through kaggle - validate_submission.py:
+def rgb_to_seg(mask_rgb: np.ndarray) -> np.ndarray:
+    """
+    Decode an (H, W, 3) RGB mask into (H, W) segmentation labels.
+    
+    args:
+        mask_rgb: (H, W, 3) RGB mask
+    returns:
+        (H, W) segementation-id array
+    """
+
+    r = mask_rgb[..., 0].astype(np.int64)
+    g = mask_rgb[..., 1].astype(np.int64)
+    return r + g * 256
+
+
+def label_seg_to_cls(seg_label: int) -> int:
+    """
+    Map a foreground segmentation class label to a classification label
+
+    Foreground seg label (1 ... 300) -> cls label (0 ... 299).
+    Special rules: background label (0) IGNORE_ID (1000) ignored
+
+    args:
+        seg_label: a segmentation label
+    returns:
+        cls_label: a classification label
+    """
+    if (seg_label > 0) and (seg_label <= 300):
+        return seg_label - 1
+    return IGNORE_ID
+
+
+def label_cls_to_seg(cls_label: int) -> int:
+    """
+    Map a classification label to a segmentation foreground class label.
+
+    cls label (0 ... 299) -> foreground seg label (1 ... 300).
+    special rules: invalid labels get treated with IGNORE_ID
+    
+    args:
+        cls_label: a classification label
+    return
+        seg_fg_label: a segmentation foreground label
+    """
+    if (cls_label >= 0) and (cls_label < 300):
+        return cls_label + 1
+    return IGNORE_ID
+
+
+def mask_seg_to_cls(seg_mask: np.ndarray) -> np.ndarray:
+    """
+    Map a segmentation mask to an image-level class label mask.
+
+    Foreground seg id k (1..300) -> class id k-1 (0..299); background (0) and
+    ignore (1000) -> IGNORE_ID so a CrossEntropy loss skips them.
+
+    NOTE: realistically the program should never use this!
+
+    args:
+        seg_mask: a segmentation mask
+    returns:
+        cls_mask: a segmentation mask translated into class labels 
+    """
+
+    cls_mask = np.full(seg_mask.shape, IGNORE_ID, dtype=np.int64)
+    fg = (seg_mask > 0) & (seg_mask <= NUM_CLASSES)
+    cls_mask[fg] = seg_mask[fg] - 1
+    return cls_mask
+
+
+def mask_cls_to_seg(cls_mask: np.ndarray) -> np.ndarray:
+    """
+    Map a class label mask to a segmentation mask.
+
+    Foreground seg id k (1..300) -> class id k-1 (0..299); background (0) and
+    ignore (1000) -> IGNORE_ID so a CrossEntropy loss skips them.
+
+    NOTE: realistically the program should never use this!
+
+    NOTE: inference does NOT need this -- the model's seg head emits seg ids
+    directly (301 channels)
+
+    NOTE: this also doesn't behave properly: inability to actually generate background!
+
+    args:
+        cls_mask: a segmentation mask
+    returns:
+        seg_mask: a segmentation mask translated into class labels 
+    """
+    
+    return np.asarray(cls_mask, dtype=np.int64) + 1
+
+
+def check_cuda() -> bool:
+    """
+    check if cuda is available on this device for torch to use
+    
+    returns:
+        True if cuda is available, False if cpu
+    """
+    return torch.cuda.is_available()
+
+
+def get_device() -> torch.Device:
+    """
+    get the available device for pytorch to use.
+
+    returns:
+        available torch device
+    """
+
     import torch
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device("cuda" if check_cuda() else "cpu")
     
 
 def project_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    """
+    Returns the project root directory as a pathlib.Path
+    """
+    return Path(__file__).resolve().parents[1].parents[1]
 
 
-# ===========================================================================
-# Training infra (single-GPU port of ConvNeXt-V2/utils.py; all DDP removed).
-# ===========================================================================
+# next section has convnext utils
+# TODO: refactor as convnext gets adopted!
+
+# taken from ConvNeXt-V2 -> https://github.com/facebookresearch/ConvNeXt-V2/
+def str2bool(v) -> bool:
+    """
+    convert string to bool type for command argument parsing
+
+    args:
+        v: a string
+    returns:
+        a bool corresponding to the string
+    raises:
+        argparse.ArgumentTypeError if an invalid input is given
+    """
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-class SmoothedValue:
-    """Track a series of values with a windowed median/avg and a global avg."""
+# taken from ConvNeXt-V2 -> https://github.com/facebookresearch/ConvNeXt-V2/
+# TODO: UPDATE AS CONVNEXT CODE GETS REFACTORED
+class SmoothedValue(object):
+    """
+    Tracks a series of values with a windowed median/avg and a global avg.
 
-    def __init__(self, window_size: int = 20, fmt: str | None = None):
+    attributes:
+        deque: stores the individual values
+        total: stores the sum of values
+        count: stores the number of values
+        fmt:   the format string
+    """
+
+    def __init__(self, window_size: int = 20, fmt: str | None = None) -> None:
         if fmt is None:
             fmt = "{median:.4f} ({global_avg:.4f})"
         self.deque = deque(maxlen=window_size)
@@ -124,13 +461,26 @@ class SmoothedValue:
         self.count = 0
         self.fmt = fmt
 
-    def update(self, value, n: int = 1):
+    def update(self, value, n: int = 1) -> None:
+        """
+        Update stored values
+        
+        args:
+            value: the value
+            n:     number of ocurrences (default = 1)
+        returns:
+            None 
+        """
+        
         self.deque.append(value)
         self.count += n
         self.total += value * n
 
-    def synchronize_between_processes(self):  # single-GPU no-op (kept for API parity)
-        return
+    def synchronize_between_processes(self) -> None:
+        """
+        currently building for single gpu, kept for matching
+        """
+        return None
 
     @property
     def median(self):
@@ -157,6 +507,8 @@ class SmoothedValue:
                                global_avg=self.global_avg, max=self.max, value=self.value)
 
 
+# taken from ConvNeXt-V2 -> https://github.com/facebookresearch/ConvNeXt-V2/
+# TODO: UPDATE AS CONVNEXT CODE GETS REFACTORED
 class MetricLogger:
     """Aggregates named SmoothedValues and prints periodic progress with ETA."""
 
@@ -224,18 +576,19 @@ class MetricLogger:
         print(f"{header} Total time: {total_time_str} ({total_time / len(iterable):.4f} s / it)")
 
 
-def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
+# taken from ConvNeXt-V2 -> https://github.com/facebookresearch/ConvNeXt-V2/ 
+def get_grad_norm(parameters, norm_type: float = 2.0) -> torch.Tensor:
     if isinstance(parameters, torch.Tensor):
         parameters = [parameters]
     parameters = [p for p in parameters if p.grad is not None]
     norm_type = float(norm_type)
     if len(parameters) == 0:
         return torch.tensor(0.0)
-    device = parameters[0].grad.device
+    device = parameters[0].grad.device # type: ignore
     if norm_type == math.inf:
-        return max(p.grad.detach().abs().max().to(device) for p in parameters)
+        return max(p.grad.detach().abs().max().to(device) for p in parameters) # type: ignore
     return torch.norm(
-        torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]),
+        torch.stack([torch.norm(p.grad.detach(), norm_type).to(device) for p in parameters]), # type: ignore
         norm_type)
 
 
@@ -357,3 +710,7 @@ def remap_checkpoint_keys(ckpt):
         elif "grn" in k:
             new_ckpt[k] = v.unsqueeze(0).unsqueeze(1)
     return new_ckpt
+
+
+# next section has upernet utils
+# TODO: port over UPerNet utils once port is finalized
