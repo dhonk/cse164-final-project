@@ -10,3 +10,4 @@ tensorflow
 timm
 torch
 torchvision
+spconv-cu126
