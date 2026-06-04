@@ -1,3 +1,8 @@
+"""
+convnextv2_sparse.py: sparse version of ConvNeXt V2
+"""
+
+
 # Modified from -> https://github.com/facebookresearch/ConvNeXt-V2/
 
 # Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -9,6 +14,7 @@
 
 
 from __future__ import annotations
+from typing import Sequence
 
 '''
 V1 Paper -> https://arxiv.org/pdf/2201.03545
@@ -49,7 +55,7 @@ class Block(nn.Module):
     """
     def __init__(self, dim: int, drop_path: float = 0., layer_scale_init_value: float = 0.):
         super().__init__()
-        self.dwconv = sp.SubMConv3d(dim, dim, kernel_size=7, padding=3, groups=dim, bias=True)
+        self.dwconv = sp.SubMConv2d(dim, dim, kernel_size=7, padding=3, groups=dim, bias=True)
         self.norm = SparseLayerNorm(dim, 1e-6)
         self.pwconv1 = SparseLinear(dim, 4 * dim)
         self.act = SparseGELU()
@@ -73,18 +79,18 @@ class SparseConvNeXtV2(nn.Module):
     Sparse ConvNeXt V2 ported to spconv
 
     args:
-        channels (int): number of input image channels (default = 3)
+        in_channels (int): number of input image channels (default = 3)
         num_classes (int): number of classes for classification head (default = 300 for this project)
-        depths (tuple[int] | list[int]): number of blocks at each stage (default = [3, 3, 9, 3])
-        dims (tuple[int] | list[int]): feature dimension at each stage. (default = [96, 192, 384, 768])
+        depths (Sequence[int]): number of blocks at each stage (default = [3, 3, 9, 3])
+        dims (Sequence[int]): feature dimension at each stage. (default = [96, 192, 384, 768])
         drop_path_rate (float): stochastic depth rate (default = 0)
         head_init_scale (float): init scaling value for classifier weights and biases. (default: 1)
     """
     def __init__(self,
-                 channels: int = 3,
+                 in_channels: int = 3,
                  num_classes: int = 300,
-                 depths: tuple[int] | list[int] = [3, 3, 9, 3],
-                 dims: tuple[int] | list[int] = [96, 192, 384, 768],
+                 depths: Sequence[int] = [3, 3, 9, 3],
+                 dims: Sequence[int] = [96, 192, 384, 768],
                  drop_path_rate: float = 0.,
                  ):
         super().__init__()
@@ -94,7 +100,7 @@ class SparseConvNeXtV2(nn.Module):
 
         # stem
         stem = nn.Sequential(
-            nn.Conv2d(channels, dims[0], kernel_size=4, stride=4),
+            nn.Conv2d(in_channels, dims[0], kernel_size=4, stride=4),
             LayerNorm(dims[0], eps=1e-6, channels_last=False)
         )
         self.downsample_layers.append(stem)
@@ -103,7 +109,7 @@ class SparseConvNeXtV2(nn.Module):
         for i in range(3):
             downsample_layer = nn.Sequential(
                 SparseLayerNorm(dims[i], eps=1e-6),
-                sp.SparseConv3d(dims[i], dims[i + 1], kernel_size=2, stride=2, bias=True) # note: change coordinates intentionally...?
+                sp.SparseConv2d(dims[i], dims[i + 1], kernel_size=2, stride=2, bias=True) # note: change coordinates intentionally...?
             )
             self.downsample_layers.append(downsample_layer)
         
@@ -119,18 +125,18 @@ class SparseConvNeXtV2(nn.Module):
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
-        if isinstance(m, sp.SparseConv3d):
-            trunc_normal_(m.linear.weight, std=.02) # type:ignore
+        if isinstance(m, sp.SparseConv2d):
+            trunc_normal_(m.weight, std=.02) # type:ignore
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
-        if isinstance(m, sp.SubMConv3d):
-            trunc_normal_(m.linear.weight, std=.02) # type:ignore
+        if isinstance(m, sp.SubMConv2d):
+            trunc_normal_(m.weight, std=.02) # type:ignore
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)        
         if isinstance(m, SparseLinear):
             trunc_normal_(m.linear.weight, std=.02)
             if m.bias is not None:
-                nn.init.constant_(m.bias, 0) # type: ignore
+                nn.init.constant_(m.linear.bias, 0) # type: ignore
 
     def upsample_mask(self, mask, scale):
         assert len(mask.shape) == 2

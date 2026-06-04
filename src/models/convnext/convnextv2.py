@@ -1,3 +1,8 @@
+"""
+convnextv2.py: implementation of ConvNeXt V2
+"""
+
+
 # Taken from -> https://github.com/facebookresearch/ConvNeXt-V2/
 
 # Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -9,6 +14,7 @@
 
 
 from __future__ import annotations
+from typing import Sequence
 
 '''
 V1 Paper -> https://arxiv.org/pdf/2201.03545
@@ -21,6 +27,7 @@ import torch.nn.functional as F
 from timm.layers.weight_init import trunc_normal_
 from timm.layers.drop import DropPath
 from .utils import LayerNorm, GRN
+
 
 class Block(nn.Module):
     """ ConvNeXtV2 Block.
@@ -57,19 +64,19 @@ class ConvNeXtV2(nn.Module):
     """ ConvNeXt V2
         
     Args:
-        in_chans (int): Number of input image channels. Default: 3
+        in_channels (int): Number of input image channels. Default: 3
         num_classes (int): Number of classes for classification head. Default: 1000
-        depths (tuple(int)): Number of blocks at each stage. Default: [3, 3, 9, 3]
-        dims (int): Feature dimension at each stage. Default: [96, 192, 384, 768]
+        depths (Sequence[int]): Number of blocks at each stage. Default: [3, 3, 9, 3]
+        dims (Sequence[int]): Feature dimension at each stage. Default: [96, 192, 384, 768]
         drop_path_rate (float): Stochastic depth rate. Default: 0.
         head_init_scale (float): Init scaling value for classifier weights and biases. Default: 1.
     """
     def __init__(
         self,
-        in_chans: int=3, 
+        in_channels: int=3, 
         num_classes: int=300, # default changed from 1000 to 300 for this project
-        depths: list[int]=[3, 3, 9, 3],
-        dims: list[int]=[96, 192, 384, 768], 
+        depths: Sequence[int]=[3, 3, 9, 3],
+        dims: Sequence[int]=[96, 192, 384, 768], 
         drop_path_rate: float=0.,
         head_init_scale: float=1.
     ):
@@ -80,7 +87,7 @@ class ConvNeXtV2(nn.Module):
 
         # stem ("patchify" layer)
         stem = nn.Sequential(
-            nn.Conv2d(in_chans, dims[0], kernel_size=4, stride=4),
+            nn.Conv2d(in_channels, dims[0], kernel_size=4, stride=4),
             LayerNorm(dims[0], eps=1e-6, channels_last=False)
         )
 
@@ -149,34 +156,74 @@ class ConvNeXtV2(nn.Module):
         x = self.head(x)
         return x
 
-def convnextv2_atto(**kwargs):
-    model = ConvNeXtV2(depths=[2, 2, 6, 2], dims=[40, 80, 160, 320], **kwargs)
+def convnextv2_atto(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+    """
+    returns an instance of convnext v2 atto size
+        depths = [2, 2, 6, 2]
+        dims = [40, 80, 160, 320]
+    """
+    model = ConvNeXtV2(in_channels, num_classes, [2, 2, 6, 2], [40, 80, 160, 320], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_femto(**kwargs):
-    model = ConvNeXtV2(depths=[2, 2, 6, 2], dims=[48, 96, 192, 384], **kwargs)
+def convnextv2_femto(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+    """
+    returns an instance of convnext v2 femto size
+        depths = [2, 2, 6, 2]
+        dims = [48, 96, 192, 384]
+    """
+    model = ConvNeXtV2(in_channels, num_classes, [2, 2, 6, 2], [48, 96, 192, 384], drop_path_rate, head_init_scale)
     return model
 
-def convnext_pico(**kwargs):
-    model = ConvNeXtV2(depths=[2, 2, 6, 2], dims=[64, 128, 256, 512], **kwargs)
+def convnext_pico(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+    """
+    returns an instance of convnext v2 pico size
+        depths = [2, 2, 6, 2]
+        dims = [64, 128, 256, 512]
+    """
+    model = ConvNeXtV2(in_channels, num_classes, [2, 2, 6, 2], [64, 128, 256, 512], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_nano(**kwargs):
-    model = ConvNeXtV2(depths=[2, 2, 8, 2], dims=[80, 160, 320, 640], **kwargs)
+def convnextv2_nano(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+    """
+    returns an instance of convnext v2 nano size
+        depths = [2, 2, 8, 2]
+        dims = [80, 160, 320, 640]
+    """
+    model = ConvNeXtV2(in_channels, num_classes, [2, 2, 8, 2], [80, 160, 320, 640], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_tiny(**kwargs):
-    model = ConvNeXtV2(depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], **kwargs)
+def convnextv2_tiny(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+    """
+    returns an instance of convnext v2 tiny size
+        depths = [3, 3, 9, 3]
+        dims = [96, 192, 384, 768]
+    """
+    model = ConvNeXtV2(in_channels, num_classes, [3, 3, 9, 3], [96, 192, 384, 768], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_base(**kwargs):
-    model = ConvNeXtV2(depths=[3, 3, 27, 3], dims=[128, 256, 512, 1024], **kwargs)
+def convnextv2_base(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+    """
+    returns an instance of convnext v2 base size
+        depths = [3, 3, 27, 3]
+        dims = [128, 256, 512, 1024]
+    """
+    model = ConvNeXtV2(in_channels, num_classes, [3, 3, 27, 3], [128, 256, 512, 1024], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_large(**kwargs):
-    model = ConvNeXtV2(depths=[3, 3, 27, 3], dims=[192, 384, 768, 1536], **kwargs)
+def convnextv2_large(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+    """
+    returns an instance of convnext v2 large size
+        depths = [3, 3, 27, 3]
+        dims = [192, 384, 768, 1536]
+    """
+    model = ConvNeXtV2(in_channels, num_classes, [3, 3, 27, 3], [192, 384, 768, 1536], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_huge(**kwargs):
-    model = ConvNeXtV2(depths=[3, 3, 27, 3], dims=[352, 704, 1408, 2816], **kwargs)
+def convnextv2_huge(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+    """
+    returns an instance of convnext v2 huge size
+        depths = [3, 3, 27, 3]
+        dims = [352, 704, 1408, 2816]
+    """
+    model = ConvNeXtV2(in_channels, num_classes, [3, 3, 27, 3], [352, 704, 1408, 2816], drop_path_rate, head_init_scale)
     return model

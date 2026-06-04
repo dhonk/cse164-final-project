@@ -11,23 +11,44 @@ import datetime
 import math
 import random
 import time
+import logging
+import sys
 from collections import defaultdict, deque, OrderedDict
 from pathlib import Path
 
 import numpy as np
 import torch
 
+from dataclasses import dataclass
 
 NUM_CLASSES = 300
 IGNORE_IDX = 1000
 BATCH_SIZE = 16
 RAND_SEED = 0
+
 CHECKPOINT_DIR = "./checkpoints"
-SAVE_DIR = "./outputs"
-DATA_DIR = "./data"
-LOG_DIR = "./logs"
 CHKPT_FREQ = 20
 
+SAVE_DIR = "./outputs"
+DATA_DIR = "./data"
+
+PRINT_FREQ = 10
+
+@dataclass(frozen=True, slots=True)
+class PretrainConfigs:
+    """
+    Stores important configs for pretraining
+    """
+
+    """Run length info"""    
+    epochs: int = 800
+    warmup_epochs: int = 40
+    
+    """Learning rate info"""
+    min_lr: float = 1e-6    
+
+    """Hyperparameters"""
+    mask_ratio: float = 0.6
 
 def seed_everything(seed: int = 0) -> None:
     """
@@ -419,7 +440,7 @@ def project_root() -> Path:
     """
     Returns the project root directory as a pathlib.Path
     """
-    return Path(__file__).resolve().parents[1].parents[1]
+    return Path(__file__).parents[2].resolve()
 
 
 # next section has convnext utils
@@ -445,3 +466,11 @@ def str2bool(v) -> bool:
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
+logging.basicConfig(
+    filename = project_root() / "logs" / (str(datetime.date.today()) + ".log"),
+    format = "%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
+    datefmt = "%H:%M:%S"
+)
+
+logging.info("Started")

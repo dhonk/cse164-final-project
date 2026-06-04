@@ -1,4 +1,4 @@
---extra-index-url https://download.pytorch.org/whl/118
+--extra-index-url https://download.pytorch.org/whl/126
 
 jupyterlab
 matplotlib

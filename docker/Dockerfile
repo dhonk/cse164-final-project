@@ -1,7 +1,7 @@
 # Modify these for other versions
-ARG PYTORCH="1.9.0"
-ARG CUDA="11.1"
-ARG CUDNN="8"
+ARG PYTORCH="2.12.0"
+ARG CUDA="12.6"
+ARG CUDNN="9"
 
 FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
 
@@ -14,29 +14,24 @@ ENV TORCH_NVCC_FLAGS="-Xfatbin -compress-all"
 
 # Install dependencies
 RUN apt-get update
-RUN apt-get install -y git ninja-build cmake build-essential libopenblas-dev \
-    xterm xauth openssh-server tmux wget mate-desktop-environment-core
+RUN apt-get install -y --no-install-recommends git ninja-build cmake build-essential \
+     xterm xauth openssh-server tmux wget python3.12 python3.12-venv python3.12-dev\
+    && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get clean
 RUN rm -rf /var/lib/apt/lists/*
 
-# For faster build, use more jobs.
-ENV MAX_JOBS=4
-RUN pip install -U git+https://github.com/shwoo1219/MinkowskiEngine -v --no-deps \
-                           --install-option="--force_cuda" \
-                           --install-option="--blas=openblas"
 ENV DEBIAN_FRONTEND=noninteractive
 
 # deps
 RUN apt-get update
-RUN apt-get install -y --no-install-recommends git  cmake build-essential \
-    libopenblas-dev xterm xauth openssh-server tmux wget \
-    && rm -rf /var/lib/apt/lists/*
-
 
 WORKDIR /workspace
-RUN rm -rf MinkowskiEngine
+
 COPY requirements.txt /workspace/requirements.txt
+
+# PEP 668 workaround
+RUN rm /usr/lib/python3.12/EXTERNALLY-MANAGED
 
 # ---- Jupyter + CV / training tooling ---------------------------------------
 RUN python -m pip install --no-cache-dir \

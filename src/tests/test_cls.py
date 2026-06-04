@@ -24,10 +24,8 @@ from torch.utils.data import Dataset, DataLoader
 
 from ..core.dataset import TestDataset, ValDataset, build_transforms
 from ..core.evaluate import write_submission
-from ..core.log import setup_logging, get_logger
+from ..core.log import log, setup_logging
 from ..trainers.train_cls import MODELS
-
-log = get_logger(__name__)
 
 
 # --- shared inference dataset (reused by test_seg) ----------------------------

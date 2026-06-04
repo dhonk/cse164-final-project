@@ -40,7 +40,7 @@ from torch.utils.data import Dataset
 from torchvision.transforms import v2
 
 
-from .utils import rgb_to_seg, IGNORE_IDX
+from .utils import rgb_to_seg, project_root
 
 # --- Transform constants -----------------------------------------------------
 # Plain arithmetic normalization (scale to [0,1] -> map to [-1,1]). NOT external
@@ -51,7 +51,7 @@ NORM_STD = (0.5, 0.5, 0.5)
 
 def load_metadata(data_root: Path, name: str) -> list[dict]:
     """Load one of the data/metadata/*.json manifests."""
-    with open(Path(data_root) / "metadata" / f"{name}.json") as f:
+    with open(data_root.resolve() / "metadata" / f"{name}.json") as f:
         return json.load(f)
 
 
@@ -67,7 +67,11 @@ class Cse164Dataset(Dataset):
 
 
 class TrainLabeledDataset(Cse164Dataset):
-    """turn directory of labeled images into a DataSet"""
+    """
+    turn directory of labeled images into a DataSet
+    
+    image, label
+    """
     def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
         super().__init__(data_root=data_root, transform=transform)
         self.items: list[dict] = load_metadata(self.data_root, "train_labeled")
@@ -86,7 +90,11 @@ class TrainLabeledDataset(Cse164Dataset):
 
 
 class TrainMaskedDataset(Cse164Dataset):
-    """turn directory of segmentation masked images into a Dataset"""
+    """
+    turn directory of segmentation masked images into a Dataset
+    
+    image, mask, segmentation_label
+    """
 
     def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
         super().__init__(data_root=data_root, transform=transform)
@@ -112,7 +120,11 @@ class TrainMaskedDataset(Cse164Dataset):
 
 
 class TrainUnlabeledSet(Cse164Dataset):
-    """turn directory of unlabeled images into a Dataset"""
+    """
+    turn directory of unlabeled images into a Dataset
+    
+    image
+    """
     def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
         super().__init__(data_root=data_root, transform=transform)
         images = sorted((self.data_root / "train_unlabeled" / "images").glob("*.JPEG"))
@@ -129,7 +141,11 @@ class TrainUnlabeledSet(Cse164Dataset):
 
 
 class ValDataset(Cse164Dataset):
-    """turn directory of validation images into a Dataset"""
+    """
+    turn directory of validation images into a Dataset
+    
+    image, mask, class_label
+    """
     def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
         super().__init__(data_root=data_root, transform=transform)
         
@@ -155,7 +171,11 @@ class ValDataset(Cse164Dataset):
 
 
 class TestDataset(Cse164Dataset):
-    """turn directory of test images into a Dataset"""
+    """
+    turn directory of test images into a Dataset
+    
+    image, original_size
+    """
 
     def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
         super().__init__(data_root=data_root, transform=transform)
