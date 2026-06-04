@@ -13,7 +13,8 @@ import torch
 import torch.nn as nn
 
 from torch.utils.data import DataLoader
-from ..core.utils import MetricLogger, SmoothedValue, NUM_CLASSES, adjust_learning_rate
+
+from ..models.convnext.utils import MetricLogger, SmoothedValue, adjust_learning_rate
 
 
 @torch.no_grad()

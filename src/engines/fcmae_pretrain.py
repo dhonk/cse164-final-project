@@ -1,93 +1,77 @@
-"""Single-epoch FCMAE self-supervised pre-training loop (Docker-only).
-
-FCMAE = Fully Convolutional Masked Autoencoder. We mask ~60% of patches and
-reconstruct pixels (MSE on masked patches only) — self-supervised on the
-competition's *own* images, which is allowed (it is "training on provided data,"
-NOT a pretrained weight). The produced encoder is the artifact the cls/seg
-finetuners consume via `remap_checkpoint_keys` + `load_state_dict(strict=False)`.
-
-The FCMAE model wraps the **sparse** ConvNeXt V2 encoder, which needs
-**MinkowskiEngine** — installed only in the Docker image. This engine FILE imports
-nothing from Minkowski (the model is passed in), so it stays import-clean on
-Windows; but actually *running* it requires the Docker env. `torch.cuda.empty_cache()`
-is called each optimizer step, as the reference does, to keep the ME network's
-fragmented allocator from OOMing over a long run.
-
-Loader contract: `build_pretrain_loader` (via `ImageOnlyDataset`) yields a plain
-image tensor batch `(N, 3, C, C)` — NO labels (unlike the reference's
-`(samples, labels)`). `model(imgs, mask_ratio=...)` returns `(loss, pred, mask)`.
-
-Single-GPU / no DDP / no tensorboard. Mirrors `ConvNeXt-V2/engine_pretrain.py`,
-trimmed. `args` must expose `lr`, `min_lr`, `warmup_epochs`, `epochs`, and may
-optionally expose `mask_ratio` (default 0.6) and `update_freq` (grad accumulation,
-default 1).
 """
+fcmae_pretrain.py: engine for fcmae single epoch
+
+"""
+
 
 from __future__ import annotations
 
+import argparse
+
 import math
+import sys
 from typing import Iterable
 
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
-from ..core.utils import MetricLogger, SmoothedValue, adjust_learning_rate
+from ..core import utils
+from ..core import log
+
+from ..models.convnext.utils import MetricLogger, SmoothedValue, adjust_learning_rate
 
 
-def train_one_epoch(
-    model: nn.Module,
-    data_loader: Iterable,
-    optimizer: torch.optim.Optimizer,
-    device: torch.device,
-    epoch: int,
-    loss_scaler,
-    args,
-    print_freq: int = 20,
-) -> dict[str, float]:
-    """Pre-train the FCMAE model for one epoch; returns averaged-stat dict.
-
-    `data_loader` yields image-only batches `(N, 3, C, C)` (no labels). The masked
-    reconstruction loss is computed inside the model. Per-iteration cosine LR via
-    `adjust_learning_rate` (fractional epoch). Optional gradient accumulation over
-    `args.update_freq` steps; the GPU cache is cleared on each true optimizer step
-    (MinkowskiEngine allocator hygiene).
-    """
+def train_one_epoch(model: nn.Module, data_loader: DataLoader,
+                    optimizer: torch.optim.Optimizer, device: torch.Device,
+                    epoch: int, loss_scaler,
+                    warmup_epochs: int = 40, epochs: int = 800, lr: float = 0, min_lr: float = 0.,
+                    update_freq: int = 1, log_writer=None, mask_ratio: float = 0.6):
     model.train(True)
-    metric_logger = MetricLogger(delimiter="  ")
-    metric_logger.add_meter("lr", SmoothedValue(window_size=1, fmt="{value:.6f}"))
-    header = f"Epoch: [{epoch}]"
+    metric_logger = MetricLogger(delimiter = "  ")
+    metric_logger.add_meter('lr', SmoothedValue(window_size=1,  fmt='{value:.6f}'))
+    header = 'Epoch: [{}]'.format(epoch)
+    print_freq = 20
 
-    mask_ratio = getattr(args, "mask_ratio", 0.6)
-    update_freq = getattr(args, "update_freq", 1)
+    update_freq = update_freq
 
     optimizer.zero_grad()
-    for step, samples in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        # per-iteration (not per-epoch) cosine LR; only on accumulation boundaries
-        if step % update_freq == 0:
-            adjust_learning_rate(optimizer, step / len(data_loader) + epoch, args)
+    for data_iter_step, samples in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        # per iteration (not per epoch) lr scheduler
+        if data_iter_step % update_freq == 0:
+            adjust_learning_rate(optimizer=optimizer, 
+                                 epoch=data_iter_step / len(data_loader) + epoch, 
+                                 warmup_epochs=warmup_epochs, 
+                                 epochs=epochs, 
+                                 lr=lr, 
+                                 min_lr=min_lr)
 
         if not isinstance(samples, list):
             samples = samples.to(device, non_blocking=True)
 
         loss, _, _ = model(samples, mask_ratio=mask_ratio)
-
         loss_value = loss.item()
         if not math.isfinite(loss_value):
-            raise RuntimeError(f"Loss is {loss_value}, stopping training")
-
-        loss = loss / update_freq
-        update_grad = (step + 1) % update_freq == 0
-        grad_norm = loss_scaler(
-            loss, optimizer, parameters=model.parameters(), update_grad=update_grad
-        )
-        if update_grad:
+            raise ValueError("Loss is {}, stopping training".format(loss_value))
+        
+        loss /= update_freq
+        loss_scaler(loss, optimizer, parameters=model.parameters(),
+                    update_grad=(data_iter_step + 1) % update_freq == 0)
+        if (data_iter_step + 1) % update_freq == 0:
             optimizer.zero_grad()
-            torch.cuda.empty_cache()  # ME network allocator hygiene over long runs
-
+            torch.cuda.empty_cache()    # clear GPU cachhe at a regular interval
+        
         metric_logger.update(loss=loss_value)
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-        if grad_norm is not None:
-            metric_logger.update(grad_norm=float(grad_norm))
 
-    print("Averaged stats:", metric_logger)
+        lr = optimizer.param_groups[0]["lr"]
+        metric_logger.update(lr=lr)
+
+        # loss_value_reduce = all_reduce_mean(loss_value) - training single GPU, no need all reduce mean
+        if log_writer is not None and (data_iter_step + 1) % update_freq == 0:
+            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
+            log_writer.update(train_loss=loss_value, head="loss", step=epoch_1000x)
+            log_writer.update(lr=lr, head="opt", step=epoch_1000x)
+
+    metric_logger.synchronize_between_processes()
+    print("averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}

@@ -6,6 +6,34 @@ log). Newest first. One entry per accomplished goal; each notes *what* changed,
 
 ---
 
+## 2026-06-03 — Fix: FCMAE depthwise-conv import (Docker / MinkowskiEngine)
+
+### `MinkowskiDepthwiseConvolution` missing in our CUDA-12 ME fork → aliased to `MinkowskiChannelwiseConvolution`
+- **Symptom:** running the sparse/FCMAE path in Docker raised
+  `ImportError: cannot import name 'MinkowskiDepthwiseConvolution' from
+  'MinkowskiEngine'`. The build's import sanity-check still passed — MinkowskiEngine
+  imports fine; only that one symbol was absent.
+- **Root cause:** the image builds ME from the `CiSong10/MinkowskiEngine`
+  `cuda12-installation` fork, which is v0.5.4 and **predates**
+  `MinkowskiDepthwiseConvolution` (a newer NVIDIA addition). Introspection showed
+  the fork exposes `MinkowskiChannelwiseConvolution` instead — the equivalent
+  per-channel (depthwise) sparse conv.
+- **Fix:** in `convnextv2_sparse.py` and `fcmae.py`, import
+  `MinkowskiChannelwiseConvolution as MinkowskiDepthwiseConvolution`. Verified the
+  channelwise class is a true drop-in: same ctor `(in_channels, kernel_size, bias,
+  dimension)`, allocates a real `.bias` Parameter when `bias=True` (not `None`, so
+  the `nn.init.constant_(m.bias, 0)` init paths are safe), and `.kernel` shape
+  `(K^D, C)` — so **all** downstream construction (sparse `Block.dwconv`),
+  `isinstance` checks, and `_init_weights` calls are unchanged.
+- **Files:** `src/models/convnext/convnextv2_sparse.py`,
+  `src/models/convnext/fcmae.py` (import line + explanatory comment only).
+- **Verified (Docker, GPU):** channelwise conv forward OK; full `FCMAE` atto
+  (`dims=[40,80,160,320]`) forward on `(2,3,224,224)` → finite loss,
+  `pred (2,3072,7,7)` (=32²·3 patch pixels), `mask (2,49)` (=7² patches). This
+  unblocks the Phase 4.3 FCMAE pre-training harness.
+
+---
+
 ## 2026-06-02 — Phase 4.2: classification trainer (`trainers/train_cls.py`)
 
 ### Full train → val (top-1/macro-acc) → checkpoint driver (runs locally on real data)

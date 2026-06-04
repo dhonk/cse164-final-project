@@ -161,24 +161,7 @@ cse164-final-project/
 
 ```
     
-## Roadmap
-**Mission Critical: MUST COMPLETE ASAP**
+## Starting over - I can't work with sparse convolution libraries
 
-1. Complete core/. These functions are going to be used everywhere else, and are easiest to get right.
-    - Data - the data extraction part is basically complete. What's missing is combining the unlabeled and labeled data to have an even bigger set of unlabeled data to pipe into FCMAE pretraining.
-    - Logging - be sure that logs go to files AND stdout, LOG USEFUL INFO!!
-    - utils - be sure to bring in utils from the cloned ConvNeXt-V2 repository
-    - evaluation - reference the starter code as frequently as possible!
-    - optim - just a copy
-2. Complete UperNet in a similar style to ConvNeXt V2. I/O should mirror roughly the same, BUT BE CAREFUL IF REFORMATTING. The code brought in from the official repo is functional and is the GOLD STANDARD, nothing logical nor computational should be touched. 
-3. Complete engines/. Once singular epoch behavior is defined, THEN training harness behavior can be defined.
-3. Complete trainers/. After the single epoch behavior is good to go, then the rest of the harness can be built up.
-    - Gotta make sure checkpointing works! If not, that'd be really bad because I'd have to keep training the model over and over and over again.
-4. Complete src/tests/. These are important to get our final results!
-5. Lastly, pipeline.py. This just needs to be able to do two things - facilitate training and testing
-
-### Rules for implementation!
-- Simple and clean are king! For this stage, don't try focusing on cramming a wide variety of functionality in. For now, just focus on creating a completed end-to-end pipeline. Try to write as little code as possible, think over decisions many times before deciding whether or not a line has to be written.
-- Not all libraries/dependencies will work. If there is an import issue, leave it. Don't try to solve those, take note, move on, and do what you can.
-- Do not overwrite much. If possible, DO NOT ERASE large chunks of code. If there is a big change you want to do, make note of it in CLAUDE.md, and they can be evaluated later.
-- Test as you go - although environment issues will make this hard - try to unit test functions as you go, make sure inputs and outputs map as exptected. Write at least three test cases per function - unless all three pass, do not make the changes to the function.
+1. Refactor core/ first
+2. Rewrite convnextv2 to use binary masking technique (slower but oh well what can I do)

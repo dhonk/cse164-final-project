@@ -1,4 +1,4 @@
---extra-index-url https://download.pytorch.org/whl/cu126
+--extra-index-url https://download.pytorch.org/whl/118
 
 jupyterlab
 matplotlib
@@ -8,5 +8,5 @@ pillow
 pytest
 tensorflow
 timm
-torch>=2.12
+torch
 torchvision

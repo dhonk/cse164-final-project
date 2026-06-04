@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import logging
 import sys
+
+from collections import deque, defaultdict
+
 from pathlib import Path
 
 LOG_FORMAT = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
@@ -29,7 +32,7 @@ def setup_logging(level: int = logging.INFO, log_file: str | Path | None = None)
 
     root = logging.getLogger()
     root.setLevel(level)
-    for handler in list(root.handlers):
+    for handler in root.handlers:
         root.removeHandler(handler)
 
     console = logging.StreamHandler(sys.stdout)

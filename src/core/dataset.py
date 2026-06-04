@@ -82,7 +82,7 @@ class TrainLabeledDataset(Cse164Dataset):
         image = Image.open(item["image"]).convert("RGB")
         label = int(item["class_id"])
         name = Path(item["image"]).name
-        return self.transform(image), torch.tensor(label, dtype=torch.long), name
+        return self.transform(image), torch.tensor(label, dtype=torch.long) # , name
 
 
 class TrainMaskedDataset(Cse164Dataset):
@@ -108,7 +108,7 @@ class TrainMaskedDataset(Cse164Dataset):
         label = int(item["segmentation_id"])
         name = Path(item["image"]).name
         image, mask = self.transform(image, mask)
-        return image, mask, torch.tensor(label, dtype=torch.long), name
+        return image, mask, torch.tensor(label, dtype=torch.long) # , name
 
 
 class TrainUnlabeledSet(Cse164Dataset):
@@ -125,7 +125,7 @@ class TrainUnlabeledSet(Cse164Dataset):
         item = self.items[idx]
         path = item["image"]
         image = Image.open(path).convert("RGB")
-        return self.transform(image), path.name
+        return self.transform(image) # , path.name
 
 
 class ValDataset(Cse164Dataset):
@@ -151,7 +151,7 @@ class ValDataset(Cse164Dataset):
 
         image = self.transform(image)
         seg_mask = torch.as_tensor(seg_mask, dtype=torch.long)
-        return image, seg_mask, torch.tensor(cls_label, dtype=torch.long), name, orig_size
+        return image, seg_mask, torch.tensor(cls_label, dtype=torch.long), torch.tensor(orig_size) # , name
 
 
 class TestDataset(Cse164Dataset):
@@ -170,7 +170,7 @@ class TestDataset(Cse164Dataset):
         path = item["image"]
         image = Image.open(path).convert("RGB")
         orig_size = image.size  # (W, H) -- needed to resize predictions back
-        return self.transform(image), path.name, orig_size
+        return self.transform(image), torch.tensor(orig_size) # , path.name
 
 
 class PretrainDataset(TrainUnlabeledSet):
