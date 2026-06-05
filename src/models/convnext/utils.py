@@ -155,7 +155,9 @@ class SparseDepthwiseConv(nn.Module):
     def __init__(self, in_channels: int, kernel_size: int, padding: int,  bias: bool=True):
         super().__init__()
         self.convs = nn.ModuleList([
-            sp.SubMConv2d(1, 1, kernel_size, bias=False, indice_key="dw", large_kernel_fast_algo=True)  # SAME key for all, experiment with large_kernel fast algo?
+            # NOTE: large_kernel_fast_algo must stay False here — it triggers an NVRTC
+            # build failure for single-channel (depthwise) SubMConv2d kernels.
+            sp.SubMConv2d(1, 1, kernel_size, bias=False, indice_key="dw")  # SAME key for all
             for _ in range(in_channels)
         ])
 

@@ -82,7 +82,7 @@ class FCMAE(nn.Module):
                 nn.init.constant_(m.bias, 0)        
         if isinstance(m, SparseLinear):
             trunc_normal_(m.linear.weight, std=.02)
-            if m.bias is not None:
+            if m.linear.bias is not None:
                 nn.init.constant_(m.linear.bias, 0)
         if isinstance(m, nn.Conv2d):
             w = m.weight.data

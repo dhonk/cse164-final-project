@@ -6,6 +6,30 @@ log). Newest first. One entry per accomplished goal; each notes *what* changed,
 
 ---
 
+## 2026-06-04 — Sparse depthwise blocker resolved: FCMAE runs end-to-end on CUDA
+
+### Fixed two bugs preventing the sparse FCMAE encoder from running
+- The CLAUDE.md blocker was framed as "won't instantiate" (the `groups==1` assert on
+  `SubMConv2d`), but the per-channel `SparseDepthwiseConv` workaround was already in place.
+  Two *separate* bugs were still hiding behind it:
+- **`SparseLinear` has no `.bias` attribute** (it only wraps `self.linear = nn.Linear`).
+  Both `_init_weights` guarded `if m.bias is not None` while assigning `m.linear.bias`, so
+  `.apply(_init_weights)` raised `AttributeError` at *construction*. Changed the guard to
+  `m.linear.bias` in `models/convnext/fcmae.py` and `models/convnext/convnextv2_sparse.py`.
+- **`large_kernel_fast_algo=True` fails NVRTC compilation for 1-channel kernels.** Isolated
+  via a minimal repro: a single-channel `SubMConv2d` with the flag throws
+  `nvrtc compile failed`; with the flag `False` it runs. Since `SparseDepthwiseConv`
+  decomposes the depthwise into 1-ch convs, the fast algo is unusable — dropped the flag in
+  `models/convnext/utils.py` (with a NOTE comment).
+- **Files:** `models/convnext/fcmae.py`, `models/convnext/convnextv2_sparse.py`,
+  `models/convnext/utils.py`.
+- **Verification:** `convnextv2_atto()` instantiates (7.26M params) and runs full
+  forward+backward on CUDA (`loss≈17.03`, `pred (2,3072,7,7)`, `mask (2,49)`). Note spconv is
+  **CUDA-only** — CPU forward asserts `implicit gemm only support cuda`, so import gates pass
+  on CPU but the encoder must be smoke-tested on GPU.
+
+---
+
 ## 2026-06-04 — FCMAE pre-training harness (`runners/pretrain.py`, `runners/utils.py`)
 
 ### Filled in the pre-training driver + its checkpoint/param-group helpers (was all stubs)
