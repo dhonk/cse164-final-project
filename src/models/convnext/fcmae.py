@@ -23,8 +23,8 @@ class FCMAE(nn.Module):
     """
     def __init__(
             self,
-            img_size: int = 224,
             in_channels: int = 3,
+            img_size: int = 224,
             depths: Sequence[int] = [3, 3, 9, 3],
             dims: Sequence[int] = [96, 192, 384, 768],
             decoder_depth: int = 1,
@@ -197,42 +197,77 @@ class FCMAE(nn.Module):
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
     
-def convnextv2_atto(**kwargs):
-    model = FCMAE(
-        depths=[2, 2, 6, 2], dims=[40, 80, 160, 320], **kwargs)
+
+# TODO: update these with the extra hyperparameters later
+
+def convnextv2_atto(in_channels: int = 3, img_size: int = 224):
+    """
+    returns an instance of convnext v2 atto size
+        depths = [2, 2, 6, 2]
+        dims = [40, 80, 160, 320]
+    """
+    model = FCMAE(in_channels, img_size, [2, 2, 6, 2], [40, 80, 160, 320])
     return model
 
-def convnextv2_femto(**kwargs):
-    model = FCMAE(
-        depths=[2, 2, 6, 2], dims=[48, 96, 192, 384], **kwargs)
+def convnextv2_femto(in_channels: int = 3, img_size: int = 224):
+    """
+    returns an instance of convnext v2 femto size
+        depths = [2, 2, 6, 2]
+        dims = [48, 96, 192, 384]
+    """
+    model = FCMAE(in_channels, img_size, [2, 2, 6, 2], [48, 96, 192, 384])
     return model
 
-def convnextv2_pico(**kwargs):
-    model = FCMAE(
-        depths=[2, 2, 6, 2], dims=[64, 128, 256, 512], **kwargs)
+def convnextv2_pico(in_channels: int = 3, img_size: int = 224):
+    """
+    returns an instance of convnext v2 pico size
+        depths = [2, 2, 6, 2]
+        dims = [64, 128, 256, 512]
+    """
+    model = FCMAE(in_channels, img_size, [2, 2, 6, 2], [64, 128, 256, 512])
     return model
 
-def convnextv2_nano(**kwargs):
-    model = FCMAE(
-        depths=[2, 2, 8, 2], dims=[80, 160, 320, 640], **kwargs)
+def convnextv2_nano(in_channels: int = 3, img_size: int = 224):
+    """
+    returns an instance of convnext v2 nano size
+        depths = [2, 2, 8, 2]
+        dims = [80, 160, 320, 640]
+    """
+    model = FCMAE(in_channels, img_size, [2, 2, 8, 2], [80, 160, 320, 640])
     return model
 
-def convnextv2_tiny(**kwargs):
-    model = FCMAE(
-        depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], **kwargs)
+def convnextv2_tiny(in_channels: int = 3, img_size: int = 224):
+    """
+    returns an instance of convnext v2 tiny size
+        depths = [3, 3, 9, 3]
+        dims = [96, 192, 384, 768]
+    """
+    model = FCMAE(in_channels, img_size, [3, 3, 9, 3], [96, 192, 384, 768])
     return model
 
-def convnextv2_base(**kwargs):
-    model = FCMAE(
-        depths=[3, 3, 27, 3], dims=[128, 256, 512, 1024], **kwargs)
+def convnextv2_base(in_channels: int = 3, img_size: int = 224):
+    """
+    returns an instance of convnext v2 base size
+        depths = [3, 3, 27, 3]
+        dims = [128, 256, 512, 1024]
+    """
+    model = FCMAE(in_channels, img_size, [3, 3, 27, 3], [128, 256, 512, 1024])
     return model
 
-def convnextv2_large(**kwargs):
-    model = FCMAE(
-        depths=[3, 3, 27, 3], dims=[192, 384, 768, 1536], **kwargs)
+def convnextv2_large(in_channels: int = 3, img_size: int = 224):
+    """
+    returns an instance of convnext v2 large size
+        depths = [3, 3, 27, 3]
+        dims = [192, 384, 768, 1536]
+    """
+    model = FCMAE(in_channels, img_size, [3, 3, 27, 3], [192, 384, 768, 1536])
     return model
 
-def convnextv2_huge(**kwargs):
-    model = FCMAE(
-        depths=[3, 3, 27, 3], dims=[352, 704, 1408, 2816], **kwargs)
+def convnextv2_huge(in_channels: int = 3, img_size: int = 224):
+    """
+    returns an instance of convnext v2 huge size
+        depths = [3, 3, 27, 3]
+        dims = [352, 704, 1408, 2816]
+    """
+    model = FCMAE(in_channels, img_size, [3, 3, 27, 3], [352, 704, 1408, 2816])
     return model

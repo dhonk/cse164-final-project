@@ -75,8 +75,10 @@ class TrainLabeledDataset(Cse164Dataset):
     def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
         super().__init__(data_root=data_root, transform=transform)
         self.items: list[dict] = load_metadata(self.data_root, "train_labeled")
+        self.img_names = []
         for i in self.items:
             i["image"] = Path(data_root) / i["image"]
+            self.img_names.append(i["image"].name)
 
     def __getitem__(self, idx: int):
         """
@@ -99,8 +101,10 @@ class TrainMaskedDataset(Cse164Dataset):
     def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
         super().__init__(data_root=data_root, transform=transform)
         self.items: list[dict] = load_metadata(self.data_root, "train_seg")
+        self.img_names = []
         for i in self.items:
             i["image"] = Path(data_root) / i["image"]
+            self.img_names.append(Path(i["image"]).name)
 
     def __getitem__(self, idx: int):
         """
@@ -128,7 +132,11 @@ class TrainUnlabeledSet(Cse164Dataset):
     def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
         super().__init__(data_root=data_root, transform=transform)
         images = sorted((self.data_root / "train_unlabeled" / "images").glob("*.JPEG"))
-        self.items = [{"image" : img} for img in images]
+        self.items = []
+        self.img_names = []
+        for i in images:
+            self.items.append({"image" : i})
+            self.img_names.append(Path(i).name)
 
     def __getitem__(self, idx: int):
         """
@@ -151,6 +159,8 @@ class ValDataset(Cse164Dataset):
         
         with open(self.data_root / "val" / "classification.json") as f:
             self.items = json.load(f)
+        
+        self.img_names = [Path(i["image"]).name for i in self.items]
 
     def __getitem__(self, idx: int):
         """
@@ -180,7 +190,11 @@ class TestDataset(Cse164Dataset):
     def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
         super().__init__(data_root=data_root, transform=transform)
         images = sorted((self.data_root / "test" / "images").glob("*.JPEG"))
-        self.items = [{"image": img} for img in images]
+        self.items = []
+        self.img_names = []
+        for i in images:
+            self.items.append({"image": i})
+            self.img_names.append(Path(i).name)
 
     def __getitem__(self, idx: int):
         """

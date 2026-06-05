@@ -34,6 +34,7 @@ from .utils import (
     SparseDropPath,
     SparseGELU,
     SparseLinear,
+    SparseDepthwiseConv,
 )
 
 import spconv.pytorch as sp
@@ -55,7 +56,7 @@ class Block(nn.Module):
     """
     def __init__(self, dim: int, drop_path: float = 0., layer_scale_init_value: float = 0.):
         super().__init__()
-        self.dwconv = sp.SubMConv2d(dim, dim, kernel_size=7, padding=3, groups=dim, bias=True)
+        self.dwconv = SparseDepthwiseConv(dim, 7, 3, bias=True)
         self.norm = SparseLayerNorm(dim, 1e-6)
         self.pwconv1 = SparseLinear(dim, 4 * dim)
         self.act = SparseGELU()
@@ -71,7 +72,7 @@ class Block(nn.Module):
         x = self.act(x)
         x = self.grn(x)
         x = self.pwconv2(x)
-        x = input + self.drop_path(x)
+        x = in_tensor + self.drop_path(x)
         return x
     
 class SparseConvNeXtV2(nn.Module):
@@ -121,6 +122,7 @@ class SparseConvNeXtV2(nn.Module):
                 *[Block(dim=dims[i], drop_path=dp_rates[cur + j]) for j in range(depths[i])]
             )
             self.stages.append(stage)
+            cur += depths[i]
         
         self.apply(self._init_weights)
 

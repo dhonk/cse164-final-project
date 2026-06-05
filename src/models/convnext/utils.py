@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 import spconv.pytorch as sp
 
+import math
 
 # modified from -> https://github.com/facebookresearch/ConvNeXt-V2/
 # basically unchanged, just type hints
@@ -58,6 +59,7 @@ class GRN(nn.Module):
 
 # modified from -> https://github.com/facebookresearch/ConvNeXt-V2/
 # changed to support spconv
+# TODO: this is currently applying batch-wise!! to keep an eye on
 class SparseGRN(nn.Module):
     """
     GRN (Global Response Normalization) for sparse tensors
@@ -142,4 +144,23 @@ class SparseLinear(nn.Module):
     
     def forward(self, x: sp.SparseConvTensor) -> sp.SparseConvTensor:
         return x.replace_feature(self.linear(x.features))
+    
+
+class SparseDepthwiseConv(nn.Module):
+    """
+    depthwise sparse submanifold convolution
+    
+    simple approach of just iterating over channels, not best approach! 
+    """
+    def __init__(self, in_channels: int, kernel_size: int, padding: int,  bias: bool=True):
+        super().__init__()
+        self.convs = nn.ModuleList([
+            sp.SubMConv2d(1, 1, kernel_size, bias=False, indice_key="dw", large_kernel_fast_algo=True)  # SAME key for all, experiment with large_kernel fast algo?
+            for _ in range(in_channels)
+        ])
+
+    def forward(self, x: sp.SparseConvTensor) -> sp.SparseConvTensor:
+        outs = [conv(x.replace_feature(x.features[:, c:c+1])).features for c, conv in enumerate(self.convs)]
+        out = torch.cat(outs, dim=1)
+        return x.replace_feature(out)
     

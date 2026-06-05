@@ -23,6 +23,14 @@ def train_one(
         device: torch.Device,
 
     ):
+    """
+    for classification fine tuning
+    
+    args:
+        data_loader (DataLoader)
+        model (nn.Module)
+        device (torch.Device)
+    """
     ...
 
 @torch.no_grad()
@@ -36,19 +44,18 @@ def predict_one(
 
     total_loss = 0
     iter = 0
-    correct_ct = 0
+    correct_ct = torch.zeros(1)
 
     for image, label in data_loader:
         image = image.to(device, non_blocking=True)
         label = label.to(device, non_blocking=True)
+        correct_ct = correct_ct.to(device, non_blocking=True)
     
-        print(len(image))
-
         output = model(image)
         loss = criterion(output, label)
         
         pred = torch.argmax(output)
-        if pred == label: correct_ct += 1
+        correct_ct += (pred == label).sum()
 
         torch.cuda.synchronize()
         
@@ -57,8 +64,9 @@ def predict_one(
 
         # TODO: better logging of loss
         if iter % PRINT_FREQ == 0:
-            print(total_loss / iter)
+            print(f"Current iteration: {iter}, Average Loss: {total_loss / iter}")
 
+    correct_ct = correct_ct[0]
     return {"accuracy" : correct_ct / len(data_loader), "loss" : total_loss / len(data_loader)}
 
 if __name__ == "__main__":

@@ -34,11 +34,28 @@ DATA_DIR = "./data"
 
 PRINT_FREQ = 10
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True) # TODO: update with any more needed params
 class PretrainConfigs:
     """
     Stores important configs for pretraining
     """
+
+    """Model info / Params"""
+    model_size: str = "atto" # handles depth, dims 
+    # Possible inputs:
+    #    "atto" "femto" "pico" "nano"
+    #    "tiny" "base" "large" "huge"
+    decoder_depth: int = 1
+    decoder_embed_dim: int = 512
+
+    # patch_size and mask_ratio should ideally be fixed throughout
+    patch_size: int = 32
+    mask_ratio: float = 0.6
+    norm_pix_loss: bool = False
+
+    """Image parameters info"""
+    channels: int = 3
+    size: int = 224
 
     """Run length info"""    
     epochs: int = 800
@@ -46,9 +63,20 @@ class PretrainConfigs:
     
     """Learning rate info"""
     min_lr: float = 1e-6    
+    blr: float = 1.5e-4
 
     """Hyperparameters"""
-    mask_ratio: float = 0.6
+    batch_size: int = BATCH_SIZE
+    weight_decay: float = 0.05
+    optim_momentum: tuple[float, float] = (0.9, 0.95) # (alpha, beta) values of optimizer momentum
+
+    """Run Info"""
+    num_workers: int = 2
+    limit: int = 0 # if > 0, use only first `limit` images
+    save_every: int = 10 # save the checkpoint every _ epochs
+    update_freq: int = 1 # gradient-accumulation steps (effective batch = batch_size * update_freq)
+    use_amp: bool = True # use AMP loss-scaling via LossScaler
+    viz_every: int = 0 # epochs between show_modeled_image reconstructions (0 = off)
 
 def seed_everything(seed: int = 0) -> None:
     """

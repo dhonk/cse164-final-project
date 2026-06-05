@@ -200,7 +200,7 @@ cse164-final-project/
 |---|---|
 | `core/utils.py`, `core/dataset.py` | ✅ done (metrics, datasets, configs, logging) |
 | `engines/utils.py`, `engines/fcmae_pretrain.py` | ✅ done |
-| `runners/pretrain.py` | ✅ refactored to current structure (param-split + ckpt inline, LossScaler, PretrainConfigs) |
+| `runners/pretrain.py`, `runners/utils.py` | ✅ done (`run`/`build_transform`/`build_model`/`show_modeled_image`/argparse `main`; `build_param_groups` via timm, `save`/`load_checkpoint`). End-to-end blocked only by the sparse encoder below |
 | `models/convnext/convnextv2.py` (dense), `upernet/upernet.py` | ✅ usable |
 | `models/convnext/convnextv2_sparse.py` (FCMAE encoder) | 🔄 **spconv port WIP — current blocker** |
 | `engines/convnext_cls.py`, `convnext_upernet_seg.py` | ⬜ stub / empty |

@@ -6,6 +6,56 @@ log). Newest first. One entry per accomplished goal; each notes *what* changed,
 
 ---
 
+## 2026-06-04 — FCMAE pre-training harness (`runners/pretrain.py`, `runners/utils.py`)
+
+### Filled in the pre-training driver + its checkpoint/param-group helpers (was all stubs)
+- The engine (`engines/fcmae_pretrain.train_one_epoch`) and `LossScaler` were already
+  done, but the driver that wires data → model → optimizer → epoch loop was stubbed, so
+  FCMAE couldn't run end-to-end even once the sparse encoder is fixed.
+- **`src/core/utils.py` — `PretrainConfigs`:** added `update_freq` (grad-accum / effective
+  batch size), `use_amp` (toggles `LossScaler`), `viz_every` (recon-preview cadence, 0=off).
+- **`src/runners/utils.py`:**
+  - `build_param_groups` — delegates to timm's `param_groups_weight_decay` (falls back to
+    `optim_factory.add_weight_decay`, then a manual biases/1-D-params split). timm here is a
+    layer/optim util, not a pretrained-weight load — within the rules.
+  - `save_checkpoint` — writes `{"model","optimizer","scaler","epoch","config"}` (config via
+    `dataclasses.asdict`), `mkdir -p` on the parent. Matches the reference format so
+    downstream finetune reads `ckpt["model"]`.
+  - `load_checkpoint` — FCMAE → strict full restore (+ optional optimizer/scaler);
+    ConvNeXtV2 → encoder warm-start `strict=False`; else best-effort `strict=False`. Returns
+    the raw ckpt dict. (Unused by `run` — save-only — exists for the cls/seg drivers.)
+- **`src/runners/pretrain.py`:**
+  - `build_transform` — RandomResizedCrop(scale 0.2–1.0, bicubic) + HFlip + ToImage/ToDtype +
+    Normalize with the repo's plain `NORM_MEAN/STD` (0.5/0.5; **not** ImageNet stats).
+  - `build_model` — `match config.model_size` → existing fcmae factory
+    (`convnextv2_atto`…`huge`, default atto). Factories still take only `(in_channels,
+    img_size)`, so decoder/patch/mask config fields are intentionally **unused for now**
+    (deferred fcmae.py follow-up). Also renamed the `convnext_pico` factory →
+    `convnextv2_pico` for naming parity.
+  - `show_modeled_image` — runs the model on a cached batch, reshapes pred `(N,C,h,w)` →
+    `(N,L,C)`, `unpatchify`, composites visible+predicted via `upsample_mask`, de-normalizes,
+    and saves an `orig | masked | recon` grid to `outputs/recon_epoch{e}.png`.
+  - `run` — single-GPU save-only loop: seed, pool the three training splits via
+    `PretrainDataset` (labels/masks dropped), `--limit` slice, DataLoader, build model,
+    `lr = blr * (batch_size*update_freq)/256`, AdamW on timm param groups, `LossScaler`,
+    per-epoch `train_one_epoch` passing the **constant base lr** (engine anneals from it),
+    checkpoint every `save_every`/last, optional recon previews.
+  - `get_args_parser`/`main` — flags default to `None` and are dropped before
+    `dataclasses.replace(PretrainConfigs(), …)` so unset flags keep config defaults; bools use
+    `BooleanOptionalAction` (`--amp/--no-amp`, `--norm-pix-loss/--no-…`).
+- **Files:** `src/core/utils.py`, `src/runners/utils.py`, `src/runners/pretrain.py`,
+  `src/models/convnext/fcmae.py` (pico rename only).
+- **Verified (local, Windows):** `py_compile` + import gate on all three modules pass;
+  `build_transform` → `(3,224,224)` float32 in [-1,1]; checkpoint save/load round-trips
+  (weights match, all keys present); `show_modeled_image` reconstruction math + PNG output +
+  train-mode restore pass (FCMAE-surface mock); argparse→config mapping correct (unset flags
+  keep defaults, `--no-amp`→`use_amp=False`). `build_model` reaches the factory and fails only
+  inside `convnextv2_sparse._init_weights` (`SparseLinear` has no `.bias`) — the known WIP
+  sparse-encoder blocker, **not** the harness. Full end-to-end smoke run stays Docker/GPU-only
+  and gated on that blocker.
+
+---
+
 ## 2026-06-03 — Fix: FCMAE depthwise-conv import (Docker / MinkowskiEngine)
 
 ### `MinkowskiDepthwiseConvolution` missing in our CUDA-12 ME fork → aliased to `MinkowskiChannelwiseConvolution`

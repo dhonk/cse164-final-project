@@ -21,207 +21,248 @@ from pathlib import Path
 
 import torch
 import torch.backends.cudnn as cudnn
-from torchvision.transforms import v2
+from torch.utils.data import DataLoader
+from torchvision.transforms import v2, InterpolationMode
 
-from ..core import dataset, utils
-from ..core.utils import (
-    BATCH_SIZE,
-    CHECKPOINT_DIR,
-    CHKPT_FREQ,
-    DATA_DIR,
-    RAND_SEED,
-    PretrainConfigs,
-)
-from ..core.dataset import NORM_MEAN, NORM_STD
+from ..core.utils import (PretrainConfigs, seed_everything, get_device,
+                          RAND_SEED, DATA_DIR, CHECKPOINT_DIR, SAVE_DIR)
+from ..core.dataset import (PretrainDataset, TrainLabeledDataset,
+                           TrainMaskedDataset, NORM_MEAN, NORM_STD)
+from ..models.convnext.fcmae import (FCMAE, convnextv2_atto, convnextv2_femto,
+                                     convnextv2_pico, convnextv2_nano,
+                                     convnextv2_tiny, convnextv2_base,
+                                     convnextv2_large, convnextv2_huge)
 from ..engines.fcmae_pretrain import train_one_epoch
-from ..models.convnext import fcmae as FCMAE
-from .utils import LossScaler
+from .utils import build_param_groups, save_checkpoint, load_checkpoint, LossScaler
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
-
-def build_param_groups(model: torch.nn.Module, weight_decay: float) -> list[dict]:
-    """
-    Split parameters into weight-decay / no-decay groups.
-
-    Biases and 1-D params (norm weights, GRN gamma/beta) are excluded from weight
-    decay -- the standard MAE recipe. Replaces the old core.optim.get_parameter_groups.
-    """
-    decay, no_decay = [], []
-    for param in model.parameters():
-        if not param.requires_grad:
-            continue
-        if param.ndim <= 1:
-            no_decay.append(param)
-        else:
-            decay.append(param)
-    return [
-        {"params": decay, "weight_decay": weight_decay},
-        {"params": no_decay, "weight_decay": 0.0},
-    ]
+def _denormalize(x: torch.Tensor) -> torch.Tensor:
+    """Undo NORM_MEAN/NORM_STD normalization and clamp to [0, 1] for display."""
+    mean = torch.tensor(NORM_MEAN, device=x.device).view(1, -1, 1, 1)
+    std = torch.tensor(NORM_STD, device=x.device).view(1, -1, 1, 1)
+    return (x * std + mean).clamp(0.0, 1.0)
 
 
-def save_checkpoint(
-    model: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
-    loss_scaler: LossScaler,
+def show_modeled_image(
+    model: FCMAE,
+    samples: torch.Tensor,
+    config: PretrainConfigs,
     epoch: int,
-    configs: PretrainConfigs,
-    tag: str = "fcmae_atto",
-) -> None:
+    out_dir: str | Path = SAVE_DIR,
+    max_images: int = 4,
+) -> torch.Tensor:
     """
-    Save the FCMAE training state. The `model` state_dict is the artifact finetune
-    loads (encoder keys remapped with strict=False). Writes a per-epoch checkpoint
-    plus a rolling `<tag>_last.pth`.
+    Diagnostic: run the FCMAE on a batch and save a (original | masked | recon)
+    grid so the reconstruction quality can be eyeballed during pre-training.
+
+    Composites the visible patches with the model's predictions on the masked
+    patches, de-normalizes, and writes `out_dir/recon_epoch{epoch}.png`. Returns
+    the de-normalized reconstruction tensor (N, 3, H, W).
     """
-    ckpt_dir = Path(CHECKPOINT_DIR)
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "model": model.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scaler": loss_scaler.state_dict(),
-        "epoch": epoch,
-        "configs": dataclasses.asdict(configs),
-    }
-    torch.save(payload, ckpt_dir / f"{tag}_ep{epoch}.pth")
-    torch.save(payload, ckpt_dir / f"{tag}_last.pth")
-    log.info("Saved checkpoint %s at epoch %d", tag, epoch)
+    from torchvision.utils import save_image
 
+    was_training = model.training
+    model.eval()
+    with torch.no_grad():
+        _, pred, mask = model(samples, mask_ratio=config.mask_ratio)
 
-def runner(
-    epochs: int = 800,
-    warmup_epochs: int = 40,
-    input_size: int = 224,
-    mask_ratio: float = 0.6,
-    decoder_depth: int = 1,
-    weight_decay: float = 0.05,
-    blr: float = 1.5e-4,
-    min_lr: float = 1e-6,
-    resume: str = "",
-    start_epoch: int = 0,
-    num_workers: int = 2,
-    limit: int = 0,
-) -> None:
+        # pred comes back as (N, C, h, w) conv output; match forward_loss and
+        # reshape to (N, L, p*p*c) before unpatchify.
+        if pred.dim() == 4:
+            n, c, _, _ = pred.shape
+            pred = torch.einsum("ncl->nlc", pred.reshape(n, c, -1))
+        recon_patches = model.unpatchify(pred)
+
+        # mask: (N, L), 1 = removed/masked -> upsample to pixel space (N, 1, H, W)
+        mask_px = model.upsample_mask(mask, model.patch_size).unsqueeze(1).type_as(samples)
+
+        masked_input = samples * (1.0 - mask_px)
+        reconstruction = samples * (1.0 - mask_px) + recon_patches * mask_px
+
+        orig = _denormalize(samples)
+        masked = _denormalize(masked_input)
+        recon = _denormalize(reconstruction)
+
+        n_show = min(samples.shape[0], max_images)
+        rows = []
+        for i in range(n_show):
+            rows.extend([orig[i], masked[i], recon[i]])
+        grid = torch.stack(rows, dim=0)
+
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"recon_epoch{epoch}.png"
+        save_image(grid, out_path, nrow=3)
+        logger.info("Saved reconstruction preview to %s", out_path)
+
+    if was_training:
+        model.train()
+    return recon
+
+def build_transform(config: PretrainConfigs) -> v2.Transform:
     """
-    Drive FCMAE pre-training for `epochs` epochs over the pooled training images.
+    Create and return the FCMAE pre-training augmentation pipeline.
 
-    args:
-        epochs:        total epochs
-        warmup_epochs: linear-warmup epochs before cosine decay
-        input_size:    crop size fed to the encoder
-        mask_ratio:    fraction of patches masked each step
-        decoder_depth: FCMAE decoder block count
-        weight_decay:  AdamW weight decay (norm/bias params excluded)
-        blr:           base lr; actual lr = blr * eff_batch_size / 256
-        min_lr:        cosine floor
-        resume:        checkpoint path to resume from (TODO: not yet wired)
-        start_epoch:   epoch to start counting from
-        num_workers:   DataLoader workers
-        limit:         if > 0, use only the first `limit` pooled images (smoke runs)
+    Mirrors the ConvNeXt-V2 reference (RandomResizedCrop scale (0.2, 1.0) +
+    horizontal flip) but normalizes with the repo's plain NORM_MEAN/NORM_STD
+    (0.5/0.5 -- arithmetic, NOT external ImageNet stats, per the no-external-data
+    rule). The optimizer / lr / schedule referenced in the old docstring live in
+    `run`, not here.
     """
-    device = utils.get_device()
-    utils.seed_everything(RAND_SEED)
-    cudnn.benchmark = True
-
-    # --- data ---------------------------------------------------------------
-    # Plain RandomResizedCrop + hflip; project's own (0.5,...) stats, no external data.
-    transform_train = v2.Compose([
-        v2.RandomResizedCrop(input_size, scale=(0.2, 1.0)),
+    return v2.Compose([
+        v2.RandomResizedCrop(
+            config.size,
+            scale=(0.2, 1.0),
+            interpolation=InterpolationMode.BICUBIC,
+            antialias=True,
+        ),
         v2.RandomHorizontalFlip(),
         v2.ToImage(),
         v2.ToDtype(torch.float32, scale=True),
-        v2.Normalize(mean=list(NORM_MEAN), std=list(NORM_STD)),
+        v2.Normalize(mean=NORM_MEAN, std=NORM_STD),
     ])
 
-    data_root = Path(DATA_DIR)
-    dataset_train = dataset.PretrainDataset(
-        data_root,
-        transform=transform_train,
-        datasets=[
-            dataset.TrainLabeledDataset(data_root, transform=transform_train),
-            dataset.TrainMaskedDataset(data_root, transform=transform_train),
-        ],
-    )
-    if limit > 0:
-        dataset_train.items = dataset_train.items[:limit]
-    log.info("Pretrain pool: %d images", len(dataset_train))
+def build_model(config: PretrainConfigs) -> FCMAE:
+    """
+    Construct an FCMAE from `config.model_size` via the existing fcmae factory
+    functions.
 
-    data_loader_train = torch.utils.data.DataLoader(
-        dataset_train,
+    NOTE: the factories currently accept only (in_channels, img_size), so the
+    decoder/patch/mask config fields (decoder_depth, decoder_embed_dim,
+    patch_size, mask_ratio, norm_pix_loss) are left unused here -- wiring them
+    through the factory signatures is a deferred follow-up in fcmae.py.
+    """
+    match config.model_size:
+        case "atto":
+            factory = convnextv2_atto
+        case "femto":
+            factory = convnextv2_femto
+        case "pico":
+            factory = convnextv2_pico
+        case "nano":
+            factory = convnextv2_nano
+        case "tiny":
+            factory = convnextv2_tiny
+        case "base":
+            factory = convnextv2_base
+        case "large":
+            factory = convnextv2_large
+        case "huge":
+            factory = convnextv2_huge
+        case _:
+            logger.warning("Unknown model_size %r, falling back to atto", config.model_size)
+            factory = convnextv2_atto
+    return factory(in_channels=config.channels, img_size=config.size)
+
+def run(config: PretrainConfigs) -> None:
+    """
+    Run `config.epochs` epochs of FCMAE pre-training (single GPU, save-only).
+
+    Pools the three TRAINING splits (unlabeled + labeled + seg, labels/masks
+    dropped) into one image-only set, builds an FCMAE, and trains it with AMP and
+    a per-iteration cosine lr schedule (annealed inside `train_one_epoch` from the
+    constant base `lr` computed here). Checkpoints land in CHECKPOINT_DIR every
+    `config.save_every` epochs and after the final epoch; optional reconstruction
+    previews are written every `config.viz_every` epochs.
+    """
+    seed_everything(RAND_SEED)
+    device = get_device()
+    cudnn.benchmark = True
+    logger.info("FCMAE pre-training on %s | model_size=%s", device, config.model_size)
+
+    # --- data: pool the three training splits into one image-only set ---------
+    transform = build_transform(config)
+    labeled = TrainLabeledDataset(DATA_DIR, transform)
+    masked = TrainMaskedDataset(DATA_DIR, transform)
+    dataset = PretrainDataset(DATA_DIR, transform, [labeled, masked])
+    if config.limit > 0:
+        dataset.items = dataset.items[: config.limit]
+    logger.info("Pre-training pool: %d images", len(dataset))
+
+    loader = DataLoader(
+        dataset,
+        batch_size=config.batch_size,
         shuffle=True,
-        batch_size=BATCH_SIZE,
-        num_workers=num_workers,
-        pin_memory=True,
+        num_workers=config.num_workers,
+        pin_memory=(device.type == "cuda"),
         drop_last=True,
     )
 
-    # --- model --------------------------------------------------------------
-    model = FCMAE.convnextv2_atto(mask_ratio=mask_ratio, decoder_depth=decoder_depth)
-    model.to(device)
+    # --- model / optimizer / amp ---------------------------------------------
+    model = build_model(config).to(device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    log.info("FCMAE convnextv2_atto: %d trainable params", n_params)
+    logger.info("Model params: %.2fM", n_params / 1e6)
 
-    # --- optimizer / scaler / configs --------------------------------------
-    eff_batch_size = BATCH_SIZE
-    lr = blr * eff_batch_size / 256
-    log.info("base lr %.2e -> actual lr %.2e (eff batch %d)", blr, lr, eff_batch_size)
+    eff_batch_size = config.batch_size * config.update_freq
+    lr = config.blr * eff_batch_size / 256
+    logger.info("base lr=%.2e | eff batch size=%d | actual lr=%.2e", config.blr, eff_batch_size, lr)
 
-    optimizer = torch.optim.AdamW(
-        build_param_groups(model, weight_decay), lr=lr, betas=(0.9, 0.95)
-    )
-    loss_scaler = LossScaler(use_amp=True, device=str(device))
-    configs = PretrainConfigs(
-        epochs=epochs,
-        warmup_epochs=warmup_epochs,
-        min_lr=min_lr,
-        mask_ratio=mask_ratio,
-    )
+    param_groups = build_param_groups(model, config.weight_decay)
+    optimizer = torch.optim.AdamW(param_groups, lr=lr, betas=config.optim_momentum)
+    loss_scaler = LossScaler(config.use_amp, device.type)
 
-    # TODO: wire up `resume` (load model/optimizer/scaler/start_epoch from ckpt).
-    if resume:
-        log.warning("resume='%s' requested but resume is not implemented yet", resume)
+    # cache one batch for reconstruction previews (only if enabled)
+    viz_batch = None
+    if config.viz_every > 0:
+        viz_batch = next(iter(loader)).to(device, non_blocking=True)
 
-    # --- train loop ---------------------------------------------------------
-    log.info("Start FCMAE pre-training for %d epochs", epochs)
+    # --- training loop --------------------------------------------------------
+    ckpt_dir = Path(CHECKPOINT_DIR)
     start_time = time.time()
-    for epoch in range(start_epoch, epochs):
+    for epoch in range(config.epochs):
         train_one_epoch(
-            model, data_loader_train, optimizer, device, epoch, loss_scaler, lr, configs
+            model, loader, optimizer, device, epoch,
+            loss_scaler, lr, config, config.update_freq,
         )
-        if (epoch + 1) % CHKPT_FREQ == 0 or epoch + 1 == epochs:
-            save_checkpoint(model, optimizer, loss_scaler, epoch, configs)
 
-    elapsed = str(datetime.timedelta(seconds=int(time.time() - start_time)))
-    log.info("Pre-training done in %s", elapsed)
+        is_last = epoch + 1 == config.epochs
+        if (epoch + 1) % config.save_every == 0 or is_last:
+            ckpt_path = ckpt_dir / f"checkpoint-{epoch}.pth"
+            save_checkpoint(
+                model, ckpt_path,
+                optimizer=optimizer, loss_scaler=loss_scaler,
+                epoch=epoch, config=config,
+            )
+            logger.info("Saved checkpoint to %s", ckpt_path)
+
+        if viz_batch is not None and ((epoch + 1) % config.viz_every == 0 or is_last):
+            show_modeled_image(model, viz_batch, config, epoch + 1, SAVE_DIR)
+
+    total_time = datetime.timedelta(seconds=int(time.time() - start_time))
+    logger.info("FCMAE pre-training done in %s", total_time)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="FCMAE self-supervised pre-training")
-    parser.add_argument("--epochs", type=int, default=800)
-    parser.add_argument("--warmup-epochs", type=int, default=40)
-    parser.add_argument("--input-size", type=int, default=224)
-    parser.add_argument("--mask-ratio", type=float, default=0.6)
-    parser.add_argument("--decoder-depth", type=int, default=1)
-    parser.add_argument("--weight-decay", type=float, default=0.05)
-    parser.add_argument("--blr", type=float, default=1.5e-4)
-    parser.add_argument("--min-lr", type=float, default=1e-6)
-    parser.add_argument("--num-workers", type=int, default=2)
-    parser.add_argument("--limit", type=int, default=0,
-                        help="use only the first N pooled images (smoke runs)")
-    args = parser.parse_args()
+def get_args_parser() -> argparse.ArgumentParser:
+    """CLI for `python -m src.runners.pretrain`. Unset flags fall back to PretrainConfigs defaults."""
+    parser = argparse.ArgumentParser("FCMAE pre-training", add_help=True)
+    # any arg left as None is dropped before dataclasses.replace, so it keeps the
+    # PretrainConfigs default. arg dest names match PretrainConfigs field names.
+    parser.add_argument("--model-size", type=str, default=None,
+                        help="atto/femto/pico/nano/tiny/base/large/huge")
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--warmup-epochs", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--update-freq", type=int, default=None, help="gradient accumulation steps")
+    parser.add_argument("--blr", type=float, default=None, help="base learning rate")
+    parser.add_argument("--mask-ratio", type=float, default=None)
+    parser.add_argument("--decoder-depth", type=int, default=None)
+    parser.add_argument("--decoder-embed-dim", type=int, default=None)
+    parser.add_argument("--norm-pix-loss", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--num-workers", type=int, default=None)
+    parser.add_argument("--limit", type=int, default=None, help="use only first N images (0 = all)")
+    parser.add_argument("--save-every", type=int, default=None)
+    parser.add_argument("--viz-every", type=int, default=None, help="recon preview every N epochs (0 = off)")
+    parser.add_argument("--amp", dest="use_amp", action=argparse.BooleanOptionalAction, default=None,
+                        help="toggle AMP loss-scaling")
+    return parser
 
-    runner(
-        epochs=args.epochs,
-        warmup_epochs=args.warmup_epochs,
-        input_size=args.input_size,
-        mask_ratio=args.mask_ratio,
-        decoder_depth=args.decoder_depth,
-        weight_decay=args.weight_decay,
-        blr=args.blr,
-        min_lr=args.min_lr,
-        num_workers=args.num_workers,
-        limit=args.limit,
-    )
+
+def main(argv: list[str] | None = None) -> None:
+    args = get_args_parser().parse_args(argv)
+    overrides = {k: v for k, v in vars(args).items() if v is not None}
+    config = dataclasses.replace(PretrainConfigs(), **overrides)
+    run(config)
 
 
 if __name__ == "__main__":
