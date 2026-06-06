@@ -38,6 +38,27 @@ PRINT_FREQ = 10
 class PretrainConfigs:
     """
     Stores important configs for pretraining
+        model_size: str (atto, femto, pico, nano, tiny, base, large, huge)
+        decoder_depth: int
+        decoder_embed_dim: int
+        patch_size: int
+        mask_ratio: float
+        norm_pix_loss: bool
+        channels: int
+        size: int
+        epochs: int
+        warmup_epochs: int
+        min_lr: float
+        blr: float
+        batch_size: int
+        weight_decay: float
+        omptim_momentum: tuple[float, float]
+        num_workers: int
+        limit: int
+        save_every: int
+        update_freq: int
+        use_amp: bool
+        viz_every: int
     """
 
     """Model info / Params"""
@@ -77,6 +98,78 @@ class PretrainConfigs:
     update_freq: int = 1 # gradient-accumulation steps (effective batch = batch_size * update_freq)
     use_amp: bool = True # use AMP loss-scaling via LossScaler
     viz_every: int = 0 # epochs between show_modeled_image reconstructions (0 = off)
+
+@dataclass(frozen=True, slots=True) # TODO: update with any more needed params
+class ClsFinetuneConfigs:
+    """
+    Stores important configs for pretraining
+        model_size: str (atto, femto, pico, nano, tiny, base, large, huge)
+        decoder_depth: int
+        decoder_embed_dim: int
+        patch_size: int
+        mask_ratio: float
+        norm_pix_loss: bool
+        channels: int
+        size: int
+        epochs: int
+        warmup_epochs: int
+        min_lr: float
+        blr: float
+        batch_size: int
+        weight_decay: float
+        omptim_momentum: tuple[float, float]
+        num_workers: int
+        limit: int
+        save_every: int
+        update_freq: int
+        use_amp: bool
+        viz_every: int
+    """
+
+    """Model info / Params"""
+    model_size: str = "atto" # handles depth, dims 
+    # Possible inputs:
+    #    "atto" "femto" "pico" "nano"
+    #    "tiny" "base" "large" "huge"
+    num_classes: int = 300
+
+    # patch_size
+    patch_size: int = 32
+
+    """Image parameters info"""
+    channels: int = 3
+    size: int = 224
+
+    """Run length info"""
+    warmup_epochs: int = 10    
+    epochs: int = 50
+
+
+    """Hyperparameters"""
+    min_lr:  float = 1e-6
+    blr: float = 1.5e-4 # base learning rate
+
+    weight_decay: float = 0.05
+    optim_momentum: tuple[float, float] = (0.9, 0.999) # (alpha, beta) values of optimizer momentum
+    layer_wise_decay: float = 0.75 # layer-wise lr decay
+    label_smoothing: float = 0.1
+    batch_size: int = 1024
+    
+    """Augmentation"""
+    randaug_params: tuple[float, float] = (9, 0.5)
+    mixup: float = 0.8
+    cutmix: float = 1.
+    drop_path: float = 0.3
+    head_init: float = 0.001
+    ema: float = 0.9999
+
+    """Run Info"""
+    num_workers: int = 2
+    limit: int = 0 # if > 0, use only first `limit` images
+    save_every: int = 10 # save the checkpoint every _ epochs
+    update_freq: int = 1 # gradient-accumulation steps (effective batch = batch_size * update_freq)
+    use_amp: bool = True # use AMP loss-scaling via LossScaler
+
 
 def seed_everything(seed: int = 0) -> None:
     """

@@ -77,7 +77,7 @@ def get_args():
     p.add_argument("--epochs", type=int, default=400)
     p.add_argument("--lr", type=float, default=2.5e-3, help="constant lr (bypasses blr/256 scaling)")
     p.add_argument("--mask-ratio", type=float, default=0.6)
-    p.add_argument("--model-size", type=str, default="tiny")
+    p.add_argument("--model-size", type=str, default="huge")
     p.add_argument("--viz-every", type=int, default=50, help="save recon grid every N epochs (0=off)")
     p.add_argument("--amp", action=argparse.BooleanOptionalAction, default=False,
                    help="fp32 by default for a clean overfit signal")

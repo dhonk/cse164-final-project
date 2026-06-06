@@ -11,10 +11,8 @@ from typing import Sequence
 import torch
 import torch.nn as nn
 
-import spconv.pytorch as sp
-
 from timm.layers.weight_init import trunc_normal_
-from .convnextv2_pseudosparse import SparseConvNeXtV2 #, SparseLinear
+from .convnextv2_pseudosparse import SparseConvNeXtV2
 from .convnextv2 import Block
 
 class FCMAE(nn.Module):
@@ -73,8 +71,7 @@ class FCMAE(nn.Module):
 
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
-            w = m.weight.data
-            trunc_normal_(w.view([w.shape[0], -1]), std=0.02)
+            trunc_normal_(m.weight, std=0.02)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         if isinstance(m, nn.LayerNorm):

@@ -35,6 +35,7 @@ from ..models.convnext.fcmae import (FCMAE, convnextv2_atto, convnextv2_femto,
 from ..engines.fcmae_pretrain import train_one_epoch
 from .utils import build_param_groups, save_checkpoint, load_checkpoint, LossScaler
 
+
 logger = logging.getLogger(__name__)
 
 def _denormalize(x: torch.Tensor) -> torch.Tensor:
@@ -42,7 +43,6 @@ def _denormalize(x: torch.Tensor) -> torch.Tensor:
     mean = torch.tensor(NORM_MEAN, device=x.device).view(1, -1, 1, 1)
     std = torch.tensor(NORM_STD, device=x.device).view(1, -1, 1, 1)
     return (x * std + mean).clamp(0.0, 1.0)
-
 
 def show_modeled_image(
     model: FCMAE,
@@ -103,12 +103,6 @@ def show_modeled_image(
 def build_transform(config: PretrainConfigs) -> v2.Transform:
     """
     Create and return the FCMAE pre-training augmentation pipeline.
-
-    Mirrors the ConvNeXt-V2 reference (RandomResizedCrop scale (0.2, 1.0) +
-    horizontal flip) but normalizes with the repo's plain NORM_MEAN/NORM_STD
-    (0.5/0.5 -- arithmetic, NOT external ImageNet stats, per the no-external-data
-    rule). The optimizer / lr / schedule referenced in the old docstring live in
-    `run`, not here.
     """
     return v2.Compose([
         v2.RandomResizedCrop(
@@ -128,10 +122,7 @@ def build_model(config: PretrainConfigs) -> FCMAE:
     Construct an FCMAE from `config.model_size` via the existing fcmae factory
     functions.
 
-    NOTE: the factories currently accept only (in_channels, img_size), so the
-    decoder/patch/mask config fields (decoder_depth, decoder_embed_dim,
-    patch_size, mask_ratio, norm_pix_loss) are left unused here -- wiring them
-    through the factory signatures is a deferred follow-up in fcmae.py.
+    TODO: finish adding factory params from config
     """
     match config.model_size:
         case "atto":
@@ -157,7 +148,7 @@ def build_model(config: PretrainConfigs) -> FCMAE:
 
 def run(config: PretrainConfigs) -> None:
     """
-    Run `config.epochs` epochs of FCMAE pre-training (single GPU, save-only).
+    Run `config.epochs` epochs of FCMAE pre-training (save only).
 
     Pools the three TRAINING splits (unlabeled + labeled + seg, labels/masks
     dropped) into one image-only set, builds an FCMAE, and trains it with AMP and
@@ -170,6 +161,8 @@ def run(config: PretrainConfigs) -> None:
     device = get_device()
     cudnn.benchmark = True
     logger.info("FCMAE pre-training on %s | model_size=%s", device, config.model_size)
+    logger.info("Hyperparams: epochs - %d | batch size - %d | ", config.epochs, config.batch_size) 
+    # TODO: check for other hyperparams when trying to max model performance
 
     # --- data: pool the three training splits into one image-only set ---------
     transform = build_transform(config)

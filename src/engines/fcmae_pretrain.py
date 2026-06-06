@@ -48,7 +48,7 @@ def train_one_epoch(
         
         if (step + 1) % update_freq == 0:
             optimizer.zero_grad()
-            # torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
         
         loss_sum += loss_value
 
@@ -60,5 +60,7 @@ def train_one_epoch(
 
         # tensorboard stuff
 
+        # TODO: add the other things
+
     logging.info(f"PreTrain epoch {epoch}/{configs.epochs}: Average Loss: {loss_sum / len(data_loader)}")
-    return {}
+    return {"avg_loss": loss_sum / len(data_loader)}
