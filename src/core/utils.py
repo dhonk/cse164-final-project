@@ -51,7 +51,7 @@ class PretrainConfigs:
     # patch_size and mask_ratio should ideally be fixed throughout
     patch_size: int = 32
     mask_ratio: float = 0.6
-    norm_pix_loss: bool = False
+    norm_pix_loss: bool = True
 
     """Image parameters info"""
     channels: int = 3
@@ -496,9 +496,13 @@ def str2bool(v) -> bool:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 logging.basicConfig(
-    filename = project_root() / "logs" / (str(datetime.date.today()) + ".log"),
+    level = logging.INFO,
     format = "%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
-    datefmt = "%H:%M:%S"
+    datefmt = "%H:%M:%S",
+    handlers = [
+        logging.FileHandler(project_root() / "logs" / (datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".log")),
+        logging.StreamHandler(sys.stdout),
+    ],
 )
 
 logging.info("Started")

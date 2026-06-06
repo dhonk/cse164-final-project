@@ -48,7 +48,7 @@ class Block(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         input = x
-        x = self.dwconv(x) # pseudo-sparse mask would go before and after this?
+        x = self.dwconv(x) 
         x = x.permute(0, 2, 3, 1) # (N, C, H, W) -> (N, H, W, C)
         x = self.norm(x)
         x = self.pwconv1(x)
@@ -56,7 +56,6 @@ class Block(nn.Module):
         x = self.grn(x)
         x = self.pwconv2(x)
         x = x.permute(0, 3, 1, 2) # (N, H, W, C) -> (N, C, H, W)
-
         x = input + self.drop_path(x)
         return x
 

@@ -18,7 +18,9 @@ class LossScaler:
 
     state_dict_key = "amp_scaler"
 
-    def __init__(self, use_amp: bool = True, device: str = "cuda"):
+    def __init__(self, use_amp: bool = True, device: str | torch.Device = "cuda"):
+        if device != "cuda":
+            raise ValueError("Should be cuda")
         self._scaler = torch.amp.GradScaler(device, enabled=use_amp) # type:ignore
 
     def __call__(
@@ -55,12 +57,12 @@ def build_param_groups(model: nn.Module, weight_decay: float) -> list[dict]:
     only if timm's entry points are unavailable.
     """
     try:
-        from timm.optim import param_groups_weight_decay
+        from timm.optim._param_groups import param_groups_weight_decay
         return param_groups_weight_decay(model, weight_decay=weight_decay)
     except ImportError:
         pass
     try:
-        from timm.optim.optim_factory import add_weight_decay
+        from timm.optim.optim_factory import add_weight_decay # type:ignore
         return add_weight_decay(model, weight_decay)
     except ImportError:
         pass
@@ -104,7 +106,7 @@ def save_checkpoint(
     if epoch is not None:
         to_save["epoch"] = epoch
     if config is not None:
-        to_save["config"] = dataclasses.asdict(config) if dataclasses.is_dataclass(config) else config
+        to_save["config"] = config
 
     file = Path(file)
     file.parent.mkdir(parents=True, exist_ok=True)

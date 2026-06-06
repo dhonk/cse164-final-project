@@ -157,7 +157,11 @@ class SparseDepthwiseConv(nn.Module):
         self.convs = nn.ModuleList([
             # NOTE: large_kernel_fast_algo must stay False here — it triggers an NVRTC
             # build failure for single-channel (depthwise) SubMConv2d kernels.
-            sp.SubMConv2d(1, 1, kernel_size, bias=False, indice_key="dw")  # SAME key for all
+            # bias=True gives each channel its own learnable scalar bias, matching the
+            # reference MinkowskiDepthwiseConvolution(bias=True) and the dense
+            # nn.Conv2d depthwise; the bias is NOT absorbed by the following channel-wise
+            # LayerNorm, so it affects the computation.
+            sp.SubMConv2d(1, 1, kernel_size, bias=bias, indice_key="dw")  # SAME key for all
             for _ in range(in_channels)
         ])
 

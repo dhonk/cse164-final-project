@@ -14,7 +14,7 @@ import torch.nn as nn
 import spconv.pytorch as sp
 
 from timm.layers.weight_init import trunc_normal_
-from .convnextv2_sparse import SparseConvNeXtV2, SparseLinear
+from .convnextv2_pseudosparse import SparseConvNeXtV2 #, SparseLinear
 from .convnextv2 import Block
 
 class FCMAE(nn.Module):
@@ -31,7 +31,7 @@ class FCMAE(nn.Module):
             decoder_embed_dim: int = 512,
             patch_size: int = 32,
             mask_ratio: float = 0.6,
-            norm_pix_loss=False,
+            norm_pix_loss = True,
     ):
         super().__init__()
         self.img_size = img_size
@@ -72,21 +72,9 @@ class FCMAE(nn.Module):
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
-        if isinstance(m, sp.SparseConv2d):
-            trunc_normal_(m.weight, std=.02)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        if isinstance(m, sp.SubMConv2d):
-            trunc_normal_(m.weight, std=.02)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)        
-        if isinstance(m, SparseLinear):
-            trunc_normal_(m.linear.weight, std=.02)
-            if m.linear.bias is not None:
-                nn.init.constant_(m.linear.bias, 0)
-        if isinstance(m, nn.Conv2d):
+        if isinstance(m, (nn.Conv2d, nn.Linear)):
             w = m.weight.data
-            trunc_normal_(w.view([w.shape[0], -1]))
+            trunc_normal_(w.view([w.shape[0], -1]), std=0.02)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         if isinstance(m, nn.LayerNorm):
@@ -200,74 +188,74 @@ class FCMAE(nn.Module):
 
 # TODO: update these with the extra hyperparameters later
 
-def convnextv2_atto(in_channels: int = 3, img_size: int = 224):
+def convnextv2_atto(in_channels: int = 3, img_size: int = 224, norm_pix_loss: bool = True):
     """
     returns an instance of convnext v2 atto size
         depths = [2, 2, 6, 2]
         dims = [40, 80, 160, 320]
     """
-    model = FCMAE(in_channels, img_size, [2, 2, 6, 2], [40, 80, 160, 320])
+    model = FCMAE(in_channels, img_size, [2, 2, 6, 2], [40, 80, 160, 320], norm_pix_loss=norm_pix_loss)
     return model
 
-def convnextv2_femto(in_channels: int = 3, img_size: int = 224):
+def convnextv2_femto(in_channels: int = 3, img_size: int = 224, norm_pix_loss: bool = True):
     """
     returns an instance of convnext v2 femto size
         depths = [2, 2, 6, 2]
         dims = [48, 96, 192, 384]
     """
-    model = FCMAE(in_channels, img_size, [2, 2, 6, 2], [48, 96, 192, 384])
+    model = FCMAE(in_channels, img_size, [2, 2, 6, 2], [48, 96, 192, 384], norm_pix_loss=norm_pix_loss)
     return model
 
-def convnextv2_pico(in_channels: int = 3, img_size: int = 224):
+def convnextv2_pico(in_channels: int = 3, img_size: int = 224, norm_pix_loss: bool = True):
     """
     returns an instance of convnext v2 pico size
         depths = [2, 2, 6, 2]
         dims = [64, 128, 256, 512]
     """
-    model = FCMAE(in_channels, img_size, [2, 2, 6, 2], [64, 128, 256, 512])
+    model = FCMAE(in_channels, img_size, [2, 2, 6, 2], [64, 128, 256, 512], norm_pix_loss=norm_pix_loss)
     return model
 
-def convnextv2_nano(in_channels: int = 3, img_size: int = 224):
+def convnextv2_nano(in_channels: int = 3, img_size: int = 224, norm_pix_loss: bool = True):
     """
     returns an instance of convnext v2 nano size
         depths = [2, 2, 8, 2]
         dims = [80, 160, 320, 640]
     """
-    model = FCMAE(in_channels, img_size, [2, 2, 8, 2], [80, 160, 320, 640])
+    model = FCMAE(in_channels, img_size, [2, 2, 8, 2], [80, 160, 320, 640], norm_pix_loss=norm_pix_loss)
     return model
 
-def convnextv2_tiny(in_channels: int = 3, img_size: int = 224):
+def convnextv2_tiny(in_channels: int = 3, img_size: int = 224, norm_pix_loss: bool = True):
     """
     returns an instance of convnext v2 tiny size
         depths = [3, 3, 9, 3]
         dims = [96, 192, 384, 768]
     """
-    model = FCMAE(in_channels, img_size, [3, 3, 9, 3], [96, 192, 384, 768])
+    model = FCMAE(in_channels, img_size, [3, 3, 9, 3], [96, 192, 384, 768], norm_pix_loss=norm_pix_loss)
     return model
 
-def convnextv2_base(in_channels: int = 3, img_size: int = 224):
+def convnextv2_base(in_channels: int = 3, img_size: int = 224, norm_pix_loss: bool = True):
     """
     returns an instance of convnext v2 base size
         depths = [3, 3, 27, 3]
         dims = [128, 256, 512, 1024]
     """
-    model = FCMAE(in_channels, img_size, [3, 3, 27, 3], [128, 256, 512, 1024])
+    model = FCMAE(in_channels, img_size, [3, 3, 27, 3], [128, 256, 512, 1024], norm_pix_loss=norm_pix_loss)
     return model
 
-def convnextv2_large(in_channels: int = 3, img_size: int = 224):
+def convnextv2_large(in_channels: int = 3, img_size: int = 224, norm_pix_loss: bool = True):
     """
     returns an instance of convnext v2 large size
         depths = [3, 3, 27, 3]
         dims = [192, 384, 768, 1536]
     """
-    model = FCMAE(in_channels, img_size, [3, 3, 27, 3], [192, 384, 768, 1536])
+    model = FCMAE(in_channels, img_size, [3, 3, 27, 3], [192, 384, 768, 1536], norm_pix_loss=norm_pix_loss)
     return model
 
-def convnextv2_huge(in_channels: int = 3, img_size: int = 224):
+def convnextv2_huge(in_channels: int = 3, img_size: int = 224, norm_pix_loss: bool = True):
     """
     returns an instance of convnext v2 huge size
         depths = [3, 3, 27, 3]
         dims = [352, 704, 1408, 2816]
     """
-    model = FCMAE(in_channels, img_size, [3, 3, 27, 3], [352, 704, 1408, 2816])
+    model = FCMAE(in_channels, img_size, [3, 3, 27, 3], [352, 704, 1408, 2816], norm_pix_loss=norm_pix_loss)
     return model

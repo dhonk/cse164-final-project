@@ -36,7 +36,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, ConcatDataset
 from torchvision.transforms import v2
 
 
@@ -61,6 +61,7 @@ class Cse164Dataset(Dataset):
         self.data_root: Path = Path(data_root)
         self.transform: v2.Transform = transform
         self.items: list[dict]
+        self.img_names: list[str]
 
     def __len__(self) -> int:
         return len(self.items)
@@ -123,7 +124,7 @@ class TrainMaskedDataset(Cse164Dataset):
         return image, mask, torch.tensor(label, dtype=torch.long) # , name
 
 
-class TrainUnlabeledSet(Cse164Dataset):
+class TrainUnlabeledDataset(Cse164Dataset):
     """
     turn directory of unlabeled images into a Dataset
     
@@ -206,13 +207,20 @@ class TestDataset(Cse164Dataset):
         orig_size = image.size  # (W, H) -- needed to resize predictions back
         return self.transform(image), torch.tensor(orig_size) # , path.name
 
+class PretrainDataset(Cse164Dataset):
+    def __init__(self, data_root: str | Path, transform: v2.Transform, sets: list[Cse164Dataset]) -> None:
+        super().__init__(data_root, transform)
+        self.img_names = []
+        self.items = []
+        for p in sets:
+            self.img_names += p.img_names
+            self.items += p.items
 
-class PretrainDataset(TrainUnlabeledSet):
-    """turn valid datasets into a combined unlabeled Dataset"""
-
-    def __init__(self, data_root: str | Path, 
-            transform: v2.Transform, datasets: list[Cse164Dataset]) -> None:
-        super().__init__(data_root=data_root, transform=transform)
-        self.items: list[dict]
-        for d in datasets:
-            self.items += d.items
+    def __getitem__(self, idx: int):
+        """
+        for unlabeled returns: image, filename
+        """
+        item = self.items[idx]
+        path = item["image"]
+        image = Image.open(path).convert("RGB")
+        return self.transform(image) # , path.name

@@ -24,10 +24,10 @@ import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2, InterpolationMode
 
-from ..core.utils import (PretrainConfigs, seed_everything, get_device,
+from ..core.utils import (PretrainConfigs, seed_everything, get_device, check_cuda,
                           RAND_SEED, DATA_DIR, CHECKPOINT_DIR, SAVE_DIR)
-from ..core.dataset import (PretrainDataset, TrainLabeledDataset,
-                           TrainMaskedDataset, NORM_MEAN, NORM_STD)
+from ..core.dataset import (TrainUnlabeledDataset, TrainLabeledDataset,
+                           TrainMaskedDataset, PretrainDataset, NORM_MEAN, NORM_STD)
 from ..models.convnext.fcmae import (FCMAE, convnextv2_atto, convnextv2_femto,
                                      convnextv2_pico, convnextv2_nano,
                                      convnextv2_tiny, convnextv2_base,
@@ -153,7 +153,7 @@ def build_model(config: PretrainConfigs) -> FCMAE:
         case _:
             logger.warning("Unknown model_size %r, falling back to atto", config.model_size)
             factory = convnextv2_atto
-    return factory(in_channels=config.channels, img_size=config.size)
+    return factory(in_channels=config.channels, img_size=config.size, norm_pix_loss=config.norm_pix_loss)
 
 def run(config: PretrainConfigs) -> None:
     """
@@ -173,9 +173,10 @@ def run(config: PretrainConfigs) -> None:
 
     # --- data: pool the three training splits into one image-only set ---------
     transform = build_transform(config)
+    unlabeled = TrainLabeledDataset(DATA_DIR, transform)
     labeled = TrainLabeledDataset(DATA_DIR, transform)
     masked = TrainMaskedDataset(DATA_DIR, transform)
-    dataset = PretrainDataset(DATA_DIR, transform, [labeled, masked])
+    dataset = PretrainDataset(DATA_DIR, transform, [unlabeled, labeled, masked])
     if config.limit > 0:
         dataset.items = dataset.items[: config.limit]
     logger.info("Pre-training pool: %d images", len(dataset))
@@ -185,7 +186,7 @@ def run(config: PretrainConfigs) -> None:
         batch_size=config.batch_size,
         shuffle=True,
         num_workers=config.num_workers,
-        pin_memory=(device.type == "cuda"),
+        pin_memory=(check_cuda()),
         drop_last=True,
     )
 
@@ -200,7 +201,7 @@ def run(config: PretrainConfigs) -> None:
 
     param_groups = build_param_groups(model, config.weight_decay)
     optimizer = torch.optim.AdamW(param_groups, lr=lr, betas=config.optim_momentum)
-    loss_scaler = LossScaler(config.use_amp, device.type)
+    loss_scaler = LossScaler(config.use_amp, "cuda" if check_cuda() else "")
 
     # cache one batch for reconstruction previews (only if enabled)
     viz_batch = None

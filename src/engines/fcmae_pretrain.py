@@ -48,7 +48,7 @@ def train_one_epoch(
         
         if (step + 1) % update_freq == 0:
             optimizer.zero_grad()
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
         
         loss_sum += loss_value
 
