@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from ..core.utils import PRINT_FREQ, PretrainConfigs
+from ..core.utils import PretrainConfigs
 from .utils import adjust_learning_rate
 
 def train_one_epoch(
@@ -21,13 +21,16 @@ def train_one_epoch(
         loss_scaler,
         lr: float,
         configs: PretrainConfigs,
-        update_freq = 1,
     ) -> dict:
-    loss_sum, loss_count = 0., 0
 
-    model.train(True)
-    
+    loss_sum = 0.
+
+    model.train()
     optimizer.zero_grad()
+
+    n_steps = len(data_loader)
+    update_freq = configs.update_freq
+
     for step, samples in enumerate(data_loader):
         if step % update_freq == 0:
             adjust_learning_rate(optimizer, step / len(data_loader) + epoch, lr, configs.min_lr, configs.warmup_epochs, configs.epochs)
@@ -35,18 +38,24 @@ def train_one_epoch(
         if not isinstance(samples, list):
             samples = samples.to(device, non_blocking=True)
 
-        loss, _, _ = model(samples, mask_ratio=configs.mask_ratio)
-        loss_value = loss.item()
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+            loss, _, _ = model(samples, mask_ratio=configs.mask_ratio)
+            loss_value = loss.item()
 
         if not math.isfinite(loss_value):
             logging.error("Infinite loss, stopping training")
             raise RuntimeError("Reached infinite loss during FCMAE pretraining")
         
+        # flush on accumulation boundaries AND on the final step, so a partial
+        # tail window (n_steps not a multiple of update_freq) still steps the
+        # optimizer instead of silently dropping its gradients next epoch.
+        update_grad = (step + 1) % update_freq == 0 or (step + 1) == n_steps
+
         loss /= update_freq
         loss_scaler(loss, optimizer, parameters=model.parameters(),
-                    update_grad=(step + 1) % update_freq == 0)
-        
-        if (step + 1) % update_freq == 0:
+                    update_grad=update_grad)
+
+        if update_grad:
             optimizer.zero_grad()
             torch.cuda.empty_cache()
         
@@ -58,9 +67,8 @@ def train_one_epoch(
 
         # loss_value_reduce = utils.all_redce_mean
 
-        # tensorboard stuff
-
         # TODO: add the other things
+        # WDYM add the other things??? What are these other things?????
 
-    logging.info(f"PreTrain epoch {epoch}/{configs.epochs}: Average Loss: {loss_sum / len(data_loader)}")
+    logging.info(f"PreTrain epoch {epoch + 1}/{configs.epochs}: Average Loss: {loss_sum / len(data_loader) : .6f}")
     return {"avg_loss": loss_sum / len(data_loader)}

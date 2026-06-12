@@ -23,7 +23,6 @@ from dataclasses import dataclass
 
 NUM_CLASSES = 300
 IGNORE_IDX = 1000
-BATCH_SIZE = 16
 RAND_SEED = 0
 
 CHECKPOINT_DIR = "./checkpoints"
@@ -62,7 +61,7 @@ class PretrainConfigs:
     """
 
     """Model info / Params"""
-    model_size: str = "atto" # handles depth, dims 
+    model_size: str = "tiny" # handles depth, dims 
     # Possible inputs:
     #    "atto" "femto" "pico" "nano"
     #    "tiny" "base" "large" "huge"
@@ -79,7 +78,7 @@ class PretrainConfigs:
     size: int = 224
 
     """Run length info"""    
-    epochs: int = 800
+    epochs: int = 400
     warmup_epochs: int = 40
     
     """Learning rate info"""
@@ -87,47 +86,26 @@ class PretrainConfigs:
     blr: float = 1.5e-4
 
     """Hyperparameters"""
-    batch_size: int = BATCH_SIZE
+    batch_size: int = 128
     weight_decay: float = 0.05
     optim_momentum: tuple[float, float] = (0.9, 0.95) # (alpha, beta) values of optimizer momentum
 
     """Run Info"""
-    num_workers: int = 2
+    num_workers: int = 12
     limit: int = 0 # if > 0, use only first `limit` images
-    save_every: int = 10 # save the checkpoint every _ epochs
-    update_freq: int = 1 # gradient-accumulation steps (effective batch = batch_size * update_freq)
+    save_every: int = 50 # save the checkpoint every _ epochs
+    update_freq: int = 4096 // 128 # gradient-accumulation steps (effective batch = batch_size * update_freq)
     use_amp: bool = True # use AMP loss-scaling via LossScaler
-    viz_every: int = 0 # epochs between show_modeled_image reconstructions (0 = off)
+    viz_every: int = 50 # epochs between show_modeled_image reconstructions (0 = off)
 
 @dataclass(frozen=True, slots=True) # TODO: update with any more needed params
-class ClsFinetuneConfigs:
+class ClsConfigs:
     """
     Stores important configs for pretraining
-        model_size: str (atto, femto, pico, nano, tiny, base, large, huge)
-        decoder_depth: int
-        decoder_embed_dim: int
-        patch_size: int
-        mask_ratio: float
-        norm_pix_loss: bool
-        channels: int
-        size: int
-        epochs: int
-        warmup_epochs: int
-        min_lr: float
-        blr: float
-        batch_size: int
-        weight_decay: float
-        omptim_momentum: tuple[float, float]
-        num_workers: int
-        limit: int
-        save_every: int
-        update_freq: int
-        use_amp: bool
-        viz_every: int
     """
 
     """Model info / Params"""
-    model_size: str = "atto" # handles depth, dims 
+    model_size: str = "tiny" # handles depth, dims 
     # Possible inputs:
     #    "atto" "femto" "pico" "nano"
     #    "tiny" "base" "large" "huge"
@@ -141,33 +119,91 @@ class ClsFinetuneConfigs:
     size: int = 224
 
     """Run length info"""
-    warmup_epochs: int = 10    
-    epochs: int = 50
-
+    warmup_epochs: int = 0
+    epochs: int = 100
 
     """Hyperparameters"""
     min_lr:  float = 1e-6
-    blr: float = 1.5e-4 # base learning rate
+    blr: float = 8e-4 # base learning rate
 
     weight_decay: float = 0.05
     optim_momentum: tuple[float, float] = (0.9, 0.999) # (alpha, beta) values of optimizer momentum
-    layer_wise_decay: float = 0.75 # layer-wise lr decay
+    layer_wise_decay: float = 0.9 # layer-wise lr decay
     label_smoothing: float = 0.1
-    batch_size: int = 1024
+    batch_size: int = 128
     
-    """Augmentation"""
-    randaug_params: tuple[float, float] = (9, 0.5)
-    mixup: float = 0.8
-    cutmix: float = 1.
-    drop_path: float = 0.3
+    """Augmentation and etc"""
+    randaug_params: tuple[float, float] = (9, 0.5) # from og = 9, lower magnitude probably?
+    color_jitter: float = 0.2
+    mixup: float = 0.8  # copied hyperparams from og
+    cutmix: float = 1   # copied hyperparams from og
+    drop_path: float = 0.2
     head_init: float = 0.001
-    ema: float = 0.9999
+    ema: float = 0.99 # EMA shadow-weight decay; enabled when 0 < ema < 1, set 0 to disable
+
+    """Random easing (lowkey idk what it does, reference uses it tho!)"""
+    re_prob: float = 0.01
+    re_mode: str = "pixel"
+    re_count: int = 1
 
     """Run Info"""
     num_workers: int = 2
     limit: int = 0 # if > 0, use only first `limit` images
-    save_every: int = 10 # save the checkpoint every _ epochs
-    update_freq: int = 1 # gradient-accumulation steps (effective batch = batch_size * update_freq)
+    save_every: int = 50 # save the checkpoint every _ epochs
+    update_freq: int = 4 # gradient-accumulation steps (effective batch = batch_size * update_freq)
+    use_amp: bool = True # use AMP loss-scaling via LossScaler
+
+
+@dataclass(frozen=True, slots=True)
+class SegConfigs:
+    """
+    store import configs for segmentation
+    """
+
+    """Model info / Params"""
+    model_size: str = "tiny" # handles depth, dims 
+    # Possible inputs:
+    #    "atto" "femto" "pico" "nano"
+    #    "tiny" "base" "large" "huge"
+    num_classes: int = 300
+
+    """Image parameters info"""
+    channels: int = 3
+    size: int = 384
+
+    """Train augmentation (CSAIL-inspired, adapted to fixed-size square crops --
+    see cooking/SEG_PIPELINE_PATTERNS.md). RandomResizedCrop's area `scale` range
+    stands in for CSAIL's multi-scale short-edge resize."""
+    crop_scale: tuple[float, float] = (0.5, 1.0) # RandomResizedCrop area range = multi-scale
+    crop_ratio: tuple[float, float] = (3 / 4, 4 / 3) # aspect jitter
+    hflip: float = 0.5 # horizontal-flip probability (joint image+mask)
+
+    """Run length info"""
+    warmup_epochs: int = 0 
+    epochs: int = 100
+
+    """Hyperparameters"""
+    min_lr:  float = 1e-6
+    blr: float = 8e-4 # base learning rate
+
+    color_jitter: tuple = (0.5, 0.5, 0.5, 0.1) # color jitter params
+    grayscale: float = 0.05                    # probability of grayscale
+
+    weight_decay: float = 0.05
+    optim_momentum: tuple[float, float] = (0.9, 0.999) # (alpha, beta) values of optimizer momentum
+    layer_wise_decay: float = 0.9 # layer-wise lr decay
+    label_smoothing: float = 0.1
+    dice_weight: float = 1.0 # weight on the soft-Dice term in DiceCELoss (CE + dice_weight * Dice)
+    ema: float = 0.99 # EMA shadow-weight decay; enabled when 0 < ema < 1, set 0 to disable
+    batch_size: int = 8
+
+    
+
+    """Run Info"""
+    num_workers: int = 2
+    limit: int = 0 # if > 0, use only first `limit` images
+    save_every: int = 50 # save the checkpoint every _ epochs
+    update_freq: int = 2 # gradient-accumulation steps (effective batch = batch_size * update_freq)
     use_amp: bool = True # use AMP loss-scaling via LossScaler
 
 
@@ -273,26 +309,31 @@ def decode_rle_to_mask(
 
 
 # modified starter code provided through kaggle - kaggle_metric.py:
-def cls_metrics(pred: dict[str, int], gt: dict[str, int], num_classes: int = NUM_CLASSES) -> tuple[float, float]:
+def cls_metrics(pred: torch.Tensor, gt: torch.Tensor, num_classes: int = NUM_CLASSES) -> tuple[float, float]:
     """
     calculate accuracy and macro accuracy of classification task given predictions and ground truths.
 
     args:
-        pred (dict[str, int]): dictionary of {filename: label}
-        gt   (dict[str, int]): dictionary of {filename: label}
+        pred (torch.Tensor): predicted class ids, shape (N,)
+        gt   (torch.Tensor): ground-truth class ids, shape (N,)
     returns:
-        accuracy, macor_accuracy (tuple[float, float]): accuracy, macro_accuracy
+        accuracy, macro_accuracy (tuple[float, float]): overall accuracy and
+            mean of per-class (present-in-gt) accuracies
     """
 
-    images = sorted(gt)
-    correct = np.array([pred.get(image) == gt[image] for image in images], dtype=np.float64)
-    accuracy = float(correct.mean()) if len(correct) else 0.0
+    pred = pred.flatten()
+    gt = gt.flatten()
+    if gt.numel() == 0:
+        return 0.0, 0.0
+
+    correct = pred == gt
+    accuracy = float(correct.float().mean())
 
     per_class = []
     for class_id in range(num_classes):
-        class_images = [image for image in images if gt[image] == class_id]
-        if class_images:
-            per_class.append(float(np.mean([pred.get(image) == class_id for image in class_images])))
+        in_class = gt == class_id
+        if bool(in_class.any()):
+            per_class.append(float(correct[in_class].float().mean()))
 
     macro_accuracy = float(np.mean(per_class)) if per_class else 0.0
 
@@ -454,7 +495,23 @@ def rgb_to_seg(mask_rgb: np.ndarray) -> np.ndarray:
 
     r = mask_rgb[..., 0].astype(np.int64)
     g = mask_rgb[..., 1].astype(np.int64)
-    return r + g * 256
+    return r + g * np.int64(256)
+
+
+def seg_to_rgb(mask_seg: np.ndarray) -> np.ndarray:
+    """
+    Convert (H, W) segmentation labels into RGB mask
+
+    args:
+        mask_seg: (H, W) segmentation-id array
+    returns:
+        (H, W, 3) uint8 RGB mask (B channel always 0)
+    """
+    seg = np.asarray(mask_seg).astype(np.int64)
+    r = (seg % 256).astype(np.uint8)
+    g = (seg // 256).astype(np.uint8)
+    b = np.zeros_like(r)
+    return np.stack([r, g, b], axis=-1)
 
 
 def label_seg_to_cls(seg_label: int) -> int:
@@ -588,14 +645,35 @@ def str2bool(v) -> bool:
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-logging.basicConfig(
-    level = logging.INFO,
-    format = "%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
-    datefmt = "%H:%M:%S",
-    handlers = [
-        logging.FileHandler(project_root() / "logs" / (datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".log")),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
+def setup_logging(to_file: bool = True, to_console: bool = True) -> None:
+    """
+    Configure root logging once for an entrypoint (file + console handlers).
 
-logging.info("Started")
+    Call this from `if __name__ == "__main__"` blocks / runner mains -- NOT at
+    import time. Importing this module must stay side-effect-free: on Windows,
+    DataLoader workers use `spawn`, which re-imports the whole package in each
+    worker process every epoch. Doing logging setup at import time made every
+    worker re-run basicConfig + emit "Started" and open its own per-worker
+    `logs/<timestamp>.log` each epoch. Idempotent: a no-op if the root logger is
+    already configured (so a re-import in a spawned worker can't double-configure).
+    """
+    root = logging.getLogger()
+    if root.handlers:
+        return
+
+    handlers: list[logging.Handler] = []
+    if to_file:
+        log_dir = project_root() / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(
+            log_dir / (datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".log")))
+    if to_console:
+        handlers.append(logging.StreamHandler(sys.stdout))
+
+    logging.basicConfig(
+        level = logging.INFO,
+        format = "%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
+        datefmt = "%H:%M:%S",
+        handlers = handlers,
+    )
+    logging.info("Started")

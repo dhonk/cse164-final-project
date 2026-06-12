@@ -37,10 +37,11 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset, ConcatDataset
+from torchvision import tv_tensors
 from torchvision.transforms import v2
 
 
-from .utils import rgb_to_seg, project_root
+from .utils import rgb_to_seg, project_root, SegConfigs, ClsConfigs
 
 # --- Transform constants -----------------------------------------------------
 # Plain arithmetic normalization (scale to [0,1] -> map to [-1,1]). NOT external
@@ -49,10 +50,97 @@ NORM_MEAN = (0.5, 0.5, 0.5)
 NORM_STD = (0.5, 0.5, 0.5)
 
 
+def build_transform_seg_train(config: SegConfigs) -> v2.Transform:
+    """Joint image+mask train transform for segmentation (CSAIL-inspired).
+
+    Operates on (image, tv_tensors.Mask): v2 geometric ops apply the SAME random
+    crop/flip to both, and route the Mask through NEAREST (never bilinear a label
+    map) automatically -- so ids stay valid and there is NO `-1` offset (our 301
+    channels map seg ids 0..300 directly, background = channel 0). RandomResizedCrop's
+    area `scale` range stands in for CSAIL's multi-scale short-edge resize; the
+    square `size` output keeps batches uniform for default_collate.
+    """
+    return v2.Compose([
+        v2.RandomResizedCrop(
+            size=config.size,
+            scale=config.crop_scale,
+            ratio=config.crop_ratio,
+            interpolation=v2.InterpolationMode.BILINEAR,  # image only; Mask -> nearest
+            antialias=True,
+        ),
+        v2.RandomHorizontalFlip(),
+        v2.RandomApply([v2.ColorJitter(*config.color_jitter)], p=0.8),
+        v2.RandomGrayscale(p=config.grayscale),
+        v2.ToImage(),
+        # scale=True only rescales Image dtypes; keep the Mask as integer seg ids.
+        v2.ToDtype({tv_tensors.Image: torch.float32, tv_tensors.Mask: torch.int64}, scale=True),
+        v2.Normalize(mean=NORM_MEAN, std=NORM_STD),  # Normalize leaves the Mask untouched
+    ])
+
+
+def build_transform_seg_eval(config: SegConfigs) -> v2.Transform:
+    """Image-only eval transform for segmentation (val / test).
+
+    Force-resizes the whole image to size x size (NO center-crop -- a crop would
+    hide borders the model must still predict; mild aspect distortion is accepted).
+    The seg engine interpolates logits back to each sample's true (H, W), and masks
+    stay at original size on the dataset side, so this never touches a label map.
+    Uniform output keeps cls_val_collate / default_collate working unchanged.
+    """
+    return v2.Compose([
+        v2.Resize(
+            (config.size, config.size),
+            interpolation=v2.InterpolationMode.BILINEAR,
+            antialias=True,
+        ),
+        v2.ToImage(),
+        v2.ToDtype(torch.float32, scale=True),
+        v2.Normalize(mean=NORM_MEAN, std=NORM_STD),
+    ])
+
+
+class StackCrops(torch.nn.Module):
+    """stack crop tuple"""
+    def __init__(self):
+        super().__init__()
+        self.to_image = v2.ToImage()
+
+    def forward(self, crops):
+        return torch.stack([self.to_image(crop) for crop in crops])
+
+
+def build_transform_cls_tta(config: ClsConfigs) -> v2.Transform:
+    """
+    build_transform_cls_tta: 10-crop tta
+    """
+    return v2.Compose([
+        v2.Resize(256, interpolation=v2.InterpolationMode.BICUBIC),
+        v2.TenCrop(size=config.size),
+        StackCrops(),
+        v2.ToDtype(torch.float32, scale=True),
+        v2.Normalize(mean=NORM_MEAN, std=NORM_STD),
+    ])
+
+
 def load_metadata(data_root: Path, name: str) -> list[dict]:
     """Load one of the data/metadata/*.json manifests."""
     with open(data_root.resolve() / "metadata" / f"{name}.json") as f:
         return json.load(f)
+
+
+def cls_val_collate(batch):
+    """Collate a ValDataset batch for the classification path.
+
+    ValDataset yields (image, cls_label, seg_mask, orig_size) where seg_mask is
+    at the ORIGINAL (variable) resolution and orig_size differs per sample, so
+    default_collate can't stack them ("storage that is not resizable"). Stack
+    only image + label into tensors; keep masks/sizes as plain lists.
+    """
+    images = torch.stack([b[0] for b in batch])
+    labels = torch.stack([b[1] for b in batch])
+    seg_masks = [b[2] for b in batch]
+    orig_sizes = [b[3] for b in batch]
+    return images, labels, seg_masks, orig_sizes
 
 
 class Cse164Dataset(Dataset):
@@ -69,13 +157,16 @@ class Cse164Dataset(Dataset):
 
 class TrainLabeledDataset(Cse164Dataset):
     """
-    turn directory of labeled images into a DataSet
-    
-    image, label
+    turn directory of labeled images into a DataSet (image, label)
+
+    include_seg merges train_seg's per-image class_id labels into the cls pool.
     """
-    def __init__(self, data_root: str | Path, transform: v2.Transform) -> None:
+    def __init__(self, data_root: str | Path, transform: v2.Transform,
+                 include_seg: bool = True) -> None:
         super().__init__(data_root=data_root, transform=transform)
         self.items: list[dict] = load_metadata(self.data_root, "train_labeled")
+        if include_seg:
+            self.items += load_metadata(self.data_root, "train_seg")
         self.img_names = []
         for i in self.items:
             i["image"] = Path(data_root) / i["image"]
@@ -119,7 +210,9 @@ class TrainMaskedDataset(Cse164Dataset):
         mask_rgb = np.array(Image.open(self.data_root / item["mask"]).convert("RGB"))
         mask = rgb_to_seg(mask_rgb)
         label = int(item["segmentation_id"])
-        name = Path(item["image"]).name
+        # wrap as tv_tensors.Mask so v2 applies the joint crop/flip and routes the
+        # label map through NEAREST resize (see build_transform_seg_train).
+        mask = tv_tensors.Mask(torch.as_tensor(mask, dtype=torch.long))
         image, mask = self.transform(image, mask)
         return image, mask, torch.tensor(label, dtype=torch.long) # , name
 
@@ -178,7 +271,8 @@ class ValDataset(Cse164Dataset):
 
         image = self.transform(image)
         seg_mask = torch.as_tensor(seg_mask, dtype=torch.long)
-        return image, seg_mask, torch.tensor(cls_label, dtype=torch.long), torch.tensor(orig_size) # , name
+
+        return image, torch.tensor(cls_label, dtype=torch.long), seg_mask, torch.tensor(orig_size) 
 
 
 class TestDataset(Cse164Dataset):

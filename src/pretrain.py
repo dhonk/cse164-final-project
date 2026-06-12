@@ -22,28 +22,31 @@ from pathlib import Path
 import torch
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
+from torchvision.utils import save_image
 from torchvision.transforms import v2, InterpolationMode
 
-from ..core.utils import (PretrainConfigs, seed_everything, get_device, check_cuda,
+from .core.utils import (PretrainConfigs, seed_everything, get_device, check_cuda, setup_logging,
                           RAND_SEED, DATA_DIR, CHECKPOINT_DIR, SAVE_DIR)
-from ..core.dataset import (TrainUnlabeledDataset, TrainLabeledDataset,
+from .core.dataset import (TrainUnlabeledDataset, TrainLabeledDataset,
                            TrainMaskedDataset, PretrainDataset, NORM_MEAN, NORM_STD)
-from ..models.convnext.fcmae import (FCMAE, convnextv2_atto, convnextv2_femto,
+from .models.fcmae import (FCMAE, convnextv2_atto, convnextv2_femto,
                                      convnextv2_pico, convnextv2_nano,
                                      convnextv2_tiny, convnextv2_base,
                                      convnextv2_large, convnextv2_huge)
-from ..engines.fcmae_pretrain import train_one_epoch
+from .engines.pretrain_engine import train_one_epoch
 from .utils import build_param_groups, save_checkpoint, load_checkpoint, LossScaler
 
 
 logger = logging.getLogger(__name__)
 
+# yeah sure this seems like it's fine
 def _denormalize(x: torch.Tensor) -> torch.Tensor:
     """Undo NORM_MEAN/NORM_STD normalization and clamp to [0, 1] for display."""
     mean = torch.tensor(NORM_MEAN, device=x.device).view(1, -1, 1, 1)
     std = torch.tensor(NORM_STD, device=x.device).view(1, -1, 1, 1)
     return (x * std + mean).clamp(0.0, 1.0)
 
+# yep i think this is working as is
 def show_modeled_image(
     model: FCMAE,
     samples: torch.Tensor,
@@ -60,7 +63,6 @@ def show_modeled_image(
     patches, de-normalizes, and writes `out_dir/recon_epoch{epoch}.png`. Returns
     the de-normalized reconstruction tensor (N, 3, H, W).
     """
-    from torchvision.utils import save_image
 
     was_training = model.training
     model.eval()
@@ -102,7 +104,12 @@ def show_modeled_image(
 
 def build_transform(config: PretrainConfigs) -> v2.Transform:
     """
-    Create and return the FCMAE pre-training augmentation pipeline.
+    build_transform: create the required transform for fcmae pretrain
+
+    args:
+        config (PretrainConfigs): params for transform
+    returns:
+        v2.Transform
     """
     return v2.Compose([
         v2.RandomResizedCrop(
@@ -148,25 +155,31 @@ def build_model(config: PretrainConfigs) -> FCMAE:
 
 def run(config: PretrainConfigs) -> None:
     """
-    Run `config.epochs` epochs of FCMAE pre-training (save only).
+    run: perform config.epochs of FCMAE pre-training, hyperparams in config
 
-    Pools the three TRAINING splits (unlabeled + labeled + seg, labels/masks
-    dropped) into one image-only set, builds an FCMAE, and trains it with AMP and
-    a per-iteration cosine lr schedule (annealed inside `train_one_epoch` from the
-    constant base `lr` computed here). Checkpoints land in CHECKPOINT_DIR every
-    `config.save_every` epochs and after the final epoch; optional reconstruction
-    previews are written every `config.viz_every` epochs.
+    uses unlabeled + labeled + seg
+    
+    trains with AMP and cosine lr schedule
+    
+    checkpoints land in CHECKPOINT_DIR every config.save_every epochs 
+    
+    reconstruction previews every config.viz_every epochs
     """
+
+    # env setup
     seed_everything(RAND_SEED)
     device = get_device()
     cudnn.benchmark = True
+    
+    # logs
     logger.info("FCMAE pre-training on %s | model_size=%s", device, config.model_size)
     logger.info("Hyperparams: epochs - %d | batch size - %d | ", config.epochs, config.batch_size) 
+    
     # TODO: check for other hyperparams when trying to max model performance
 
-    # --- data: pool the three training splits into one image-only set ---------
+    # build datasets / dataloader
     transform = build_transform(config)
-    unlabeled = TrainLabeledDataset(DATA_DIR, transform)
+    unlabeled = TrainUnlabeledDataset(DATA_DIR, transform)
     labeled = TrainLabeledDataset(DATA_DIR, transform)
     masked = TrainMaskedDataset(DATA_DIR, transform)
     dataset = PretrainDataset(DATA_DIR, transform, [unlabeled, labeled, masked])
@@ -181,17 +194,21 @@ def run(config: PretrainConfigs) -> None:
         num_workers=config.num_workers,
         pin_memory=(check_cuda()),
         drop_last=True,
+        persistent_workers=(config.num_workers > 0),
     )
 
-    # --- model / optimizer / amp ---------------------------------------------
+    # model
     model = build_model(config).to(device)
+
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info("Model params: %.2fM", n_params / 1e6)
 
+    # lr 
     eff_batch_size = config.batch_size * config.update_freq
     lr = config.blr * eff_batch_size / 256
     logger.info("base lr=%.2e | eff batch size=%d | actual lr=%.2e", config.blr, eff_batch_size, lr)
 
+    # loss/optim
     param_groups = build_param_groups(model, config.weight_decay)
     optimizer = torch.optim.AdamW(param_groups, lr=lr, betas=config.optim_momentum)
     loss_scaler = LossScaler(config.use_amp, "cuda" if check_cuda() else "")
@@ -201,18 +218,22 @@ def run(config: PretrainConfigs) -> None:
     if config.viz_every > 0:
         viz_batch = next(iter(loader)).to(device, non_blocking=True)
 
-    # --- training loop --------------------------------------------------------
+    # train loop
     ckpt_dir = Path(CHECKPOINT_DIR)
     start_time = time.time()
+    
     for epoch in range(config.epochs):
+        # an epoch
         train_one_epoch(
             model, loader, optimizer, device, epoch,
-            loss_scaler, lr, config, config.update_freq,
+            loss_scaler, lr, config,
         )
 
         is_last = epoch + 1 == config.epochs
+
+        # checkpoint saving
         if (epoch + 1) % config.save_every == 0 or is_last:
-            ckpt_path = ckpt_dir / f"checkpoint-{epoch}.pth"
+            ckpt_path = ckpt_dir / f"checkpoint-pretrain-{epoch + 1}.pth"
             save_checkpoint(
                 model, ckpt_path,
                 optimizer=optimizer, loss_scaler=loss_scaler,
@@ -220,6 +241,7 @@ def run(config: PretrainConfigs) -> None:
             )
             logger.info("Saved checkpoint to %s", ckpt_path)
 
+        # reconstruction checking
         if viz_batch is not None and ((epoch + 1) % config.viz_every == 0 or is_last):
             show_modeled_image(model, viz_batch, config, epoch + 1, SAVE_DIR)
 
@@ -228,7 +250,11 @@ def run(config: PretrainConfigs) -> None:
 
 
 def get_args_parser() -> argparse.ArgumentParser:
-    """CLI for `python -m src.runners.pretrain`. Unset flags fall back to PretrainConfigs defaults."""
+    """
+    CLI for python -m src.pretrain
+     
+    Unset flags fall back to PretrainConfigs defaults
+    """
     parser = argparse.ArgumentParser("FCMAE pre-training", add_help=True)
     # any arg left as None is dropped before dataclasses.replace, so it keeps the
     # PretrainConfigs default. arg dest names match PretrainConfigs field names.
@@ -251,8 +277,9 @@ def get_args_parser() -> argparse.ArgumentParser:
                         help="toggle AMP loss-scaling")
     return parser
 
-
+# main loops
 def main(argv: list[str] | None = None) -> None:
+    setup_logging()
     args = get_args_parser().parse_args(argv)
     overrides = {k: v for k, v in vars(args).items() if v is not None}
     config = dataclasses.replace(PretrainConfigs(), **overrides)

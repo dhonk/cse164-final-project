@@ -141,7 +141,7 @@ class ConvNeXtV2(nn.Module):
         return self.norm(x.mean([-2, -1])) # global average pooling, (N, C, H, W) -> (N, C)
 
     # create an updated forward_features for segmentation task
-    def forward_features_seg(self, x: torch.Tensor) -> tuple:
+    def forward_features_seg(self, x: torch.Tensor) -> Sequence[torch.Tensor]:
         outs = []
         for i in range(4):
             x = self.downsample_layers[i](x)
@@ -155,7 +155,7 @@ class ConvNeXtV2(nn.Module):
         x = self.head(x)
         return x
 
-def convnextv2_atto(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+def atto(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
     """
     returns an instance of convnext v2 atto size
         depths = [2, 2, 6, 2]
@@ -164,7 +164,7 @@ def convnextv2_atto(in_channels: int=3, num_classes: int=300, drop_path_rate: fl
     model = ConvNeXtV2(in_channels, num_classes, [2, 2, 6, 2], [40, 80, 160, 320], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_femto(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+def femto(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
     """
     returns an instance of convnext v2 femto size
         depths = [2, 2, 6, 2]
@@ -173,7 +173,7 @@ def convnextv2_femto(in_channels: int=3, num_classes: int=300, drop_path_rate: f
     model = ConvNeXtV2(in_channels, num_classes, [2, 2, 6, 2], [48, 96, 192, 384], drop_path_rate, head_init_scale)
     return model
 
-def convnext_pico(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+def pico(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
     """
     returns an instance of convnext v2 pico size
         depths = [2, 2, 6, 2]
@@ -182,7 +182,7 @@ def convnext_pico(in_channels: int=3, num_classes: int=300, drop_path_rate: floa
     model = ConvNeXtV2(in_channels, num_classes, [2, 2, 6, 2], [64, 128, 256, 512], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_nano(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+def nano(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
     """
     returns an instance of convnext v2 nano size
         depths = [2, 2, 8, 2]
@@ -191,7 +191,7 @@ def convnextv2_nano(in_channels: int=3, num_classes: int=300, drop_path_rate: fl
     model = ConvNeXtV2(in_channels, num_classes, [2, 2, 8, 2], [80, 160, 320, 640], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_tiny(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+def tiny(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
     """
     returns an instance of convnext v2 tiny size
         depths = [3, 3, 9, 3]
@@ -200,7 +200,7 @@ def convnextv2_tiny(in_channels: int=3, num_classes: int=300, drop_path_rate: fl
     model = ConvNeXtV2(in_channels, num_classes, [3, 3, 9, 3], [96, 192, 384, 768], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_base(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+def base(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
     """
     returns an instance of convnext v2 base size
         depths = [3, 3, 27, 3]
@@ -209,7 +209,7 @@ def convnextv2_base(in_channels: int=3, num_classes: int=300, drop_path_rate: fl
     model = ConvNeXtV2(in_channels, num_classes, [3, 3, 27, 3], [128, 256, 512, 1024], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_large(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+def large(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
     """
     returns an instance of convnext v2 large size
         depths = [3, 3, 27, 3]
@@ -218,7 +218,7 @@ def convnextv2_large(in_channels: int=3, num_classes: int=300, drop_path_rate: f
     model = ConvNeXtV2(in_channels, num_classes, [3, 3, 27, 3], [192, 384, 768, 1536], drop_path_rate, head_init_scale)
     return model
 
-def convnextv2_huge(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
+def huge(in_channels: int=3, num_classes: int=300, drop_path_rate: float=0., head_init_scale: float=1.):
     """
     returns an instance of convnext v2 huge size
         depths = [3, 3, 27, 3]
