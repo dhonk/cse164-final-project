@@ -1,36 +1,58 @@
 # CSE 164 Final Project
 
 ## Usage
-### Docker
-The most straightforward way to run this project is in Docker.
+First, must ensure the following project structure:
 
-#### Interactive Notebook
-Train, test, debug, examine features/demonstrations, and evaluate in an interactive notebook environment.
+> cse164-final-project/
+> ├── src/
+> ├── data/
+> ├── logs/
+> ├── outputs/
+> ├── checkpoints/
+> │   └── final/
+> └── ...
 
-**To start jupyter lab:**
+Start by installing dependencies:
 ```
-docker compose up notebook -d
-docker compose run notebook
-```
-Then go to `http://127.0.0.1:8888/lab`
-
-**When complete** end the container with
-```
-docker compose --profile notebook down
+pip install -r requirements.txt
 ```
 
-#### CLI
-**TODO**
+To run FCMAE pretraining:
+```
+python -m src.pretrain
+```
+
+To run classification finetuning:
+```
+python -m src.clstrain
+```
+
+To run segementation finetuning:
+```
+python -m src.segtrain
+```
+
+To generate Kaggle results:
+  First, move the generated checkpoint file from classification training, and segmentation training (called `checkpoint-clsfinetune-{epoch #}.pth` and `checkpoint-segfinetune-{epoch #}.pth` into `checkpoints/final/`, like so:
+> ├── checkpoints/
+> │   └── final/
+> │       ├── checkpoint-clsfinetune-{epoch #}.pth
+> │       └── checkpoint-segfinetune-{epoch #}.pth
+
+Then run 
+```
+python -m src.finalres
+```
 
 ## Dependencies
-**TODO**
+python 3.12
+CUDA 12.6
+Check requirements.txt for all other dependencies
 
 ## Dataset
 Dataset is taken directly from: [Kaggle - CSE164 Final Project 2026](https://www.kaggle.com/competitions/cse-164-final-project-2026/leaderboard)
 
 ## Acknowledgment
 This repository is built using the [ConvNeXt V2 repository](https://github.com/facebookresearch/ConvNeXt-V2/).
-
-And uses the [PyTorch] and [MinkowskiEngine] libraries.
 
 This repository was used as course work for UC Santa Cruz course CSE 164: Computer Vision (Spring '26 Prof. Cihang Xie).
