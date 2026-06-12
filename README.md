@@ -3,14 +3,16 @@
 ## Usage
 First, must ensure the following project structure:
 
-> cse164-final-project/
-> ├── src/
-> ├── data/
-> ├── logs/
-> ├── outputs/
-> ├── checkpoints/
-> │   └── final/
-> └── ...
+```
+cse164-final-project/
+├── src/
+├── data/
+├── logs/
+├── outputs/
+├── checkpoints/
+│   └── final/
+└── ...
+```
 
 Start by installing dependencies:
 ```
@@ -34,10 +36,12 @@ python -m src.segtrain
 
 To generate Kaggle results:
   First, move the generated checkpoint file from classification training, and segmentation training (called `checkpoint-clsfinetune-{epoch #}.pth` and `checkpoint-segfinetune-{epoch #}.pth` into `checkpoints/final/`, like so:
-> ├── checkpoints/
-> │   └── final/
-> │       ├── checkpoint-clsfinetune-{epoch #}.pth
-> │       └── checkpoint-segfinetune-{epoch #}.pth
+```
+├── checkpoints/
+│   └── final/
+│       ├── checkpoint-clsfinetune-{epoch #}.pth
+│       └── checkpoint-segfinetune-{epoch #}.pth
+```
 
 Then run 
 ```
