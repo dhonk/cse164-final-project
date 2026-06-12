@@ -136,7 +136,7 @@ class ClsConfigs:
     randaug_params: tuple[float, float] = (9, 0.5) # from og = 9, lower magnitude probably?
     color_jitter: float = 0.2
     mixup: float = 0.8  # copied hyperparams from og
-    cutmix: float = 1   # copied hyperparams from og
+    cutmix: float = 1.0   # copied hyperparams from og (must be float: int alpha -> Beta(Long) -> dirichlet crash)
     drop_path: float = 0.2
     head_init: float = 0.001
     ema: float = 0.99 # EMA shadow-weight decay; enabled when 0 < ema < 1, set 0 to disable
