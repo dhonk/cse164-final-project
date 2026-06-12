@@ -49,9 +49,9 @@ python -m src.finalres
 ```
 
 ## Dependencies
-python 3.12
-CUDA 12.6
-Check requirements.txt for all other dependencies
+- python 3.12
+- CUDA 12.6
+- Check requirements.txt for all other dependencies
 
 ## Dataset
 Dataset is taken directly from: [Kaggle - CSE164 Final Project 2026](https://www.kaggle.com/competitions/cse-164-final-project-2026/leaderboard)
